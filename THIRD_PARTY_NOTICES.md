@@ -5,7 +5,7 @@ an AI model made by Anthropic. It includes or uses the following open-source wor
 
 ## Material Icons (Google)
 
-The app's icons (edit, add, refresh, share, check, mail, download, back, arrow, person)
+The app's icons (edit, add, refresh, share, check, mail, download, back, arrow, person, info)
 are SVG paths from or adapted from Google's Material Icons:
 https://github.com/google/material-design-icons
 

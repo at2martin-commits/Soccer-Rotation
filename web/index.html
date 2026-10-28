@@ -92,6 +92,8 @@ header.top .wrap { display: flex; align-items: center; gap: 12px; padding-block:
 .team-btn .sub { font-size: 0.85rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .team-btn .caret { flex: none; width: 22px; height: 22px; color: var(--muted); }
 .sync { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+.info-btn { margin-right: -10px; color: var(--muted); }
+.info-btn svg { width: 24px; height: 24px; }
 
 main { padding-block: 16px 110px; display: grid; gap: 14px; }
 
@@ -321,6 +323,9 @@ a.btn.primary { color: var(--accent-ink); }
       <svg class="caret" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
     </button>
     <span class="sync" id="sync" hidden></span>
+    <button class="icon-btn info-btn" id="about-btn" type="button" aria-label="About this app">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+    </button>
   </div>
 </header>
 
@@ -943,7 +948,6 @@ function render() {
         <p class="hint">Add your players and game dates, check off who showed up, and get a lineup where every kid gets fair time on the field.</p>
         <button class="btn primary" type="button" data-action="new-team">${ICON.plus} Create a team</button>
         <button class="btn" type="button" data-action="sample-team">Try it with sample names</button>
-        <button class="back" type="button" data-action="about">About this app</button>
       </div>`;
     return;
   }
@@ -1267,7 +1271,6 @@ function teamMenu() {
   openDialog(`<h2>Teams</h2>
     <div class="team-list">${list}</div>
     <div class="dlg-actions">
-      <button class="btn" type="button" data-d="about">About</button>
       <button class="btn" type="button" data-d="backup">Back up or move data</button>
       ${t ? `<button class="btn" type="button" data-d="edit">${ICON.edit} Edit this team</button>` : ""}
       <button class="btn primary" type="button" data-d="new">${ICON.plus} New team</button>
@@ -1276,7 +1279,6 @@ function teamMenu() {
     edit: () => teamDialog(team()),
     new: () => teamDialog(null),
     backup: backupDialog,
-    about: aboutDialog,
   });
 }
 
@@ -1666,6 +1668,7 @@ function toast(text) {
 
 const SAMPLE_NAMES = ["Ava", "Ben", "Chloe", "Diego", "Emma", "Finn", "Grace", "Hiro"];
 
+document.getElementById("about-btn").addEventListener("click", aboutDialog);
 document.getElementById("team-btn").addEventListener("click", () => (state.teams.length ? teamMenu() : teamDialog(null)));
 document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
   // Tapping Games while already there goes back to the list.
@@ -1725,9 +1728,6 @@ document.getElementById("main").addEventListener("click", async (e) => {
   switch (b.dataset.action) {
     case "new-team":
       teamDialog(null);
-      break;
-    case "about":
-      aboutDialog();
       break;
     case "sample-team": {
       const nt = newTeam("Sample team", "SIX_2_3", "QUARTERS");
