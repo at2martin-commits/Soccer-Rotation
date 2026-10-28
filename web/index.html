@@ -359,6 +359,7 @@ const POS_ORDER = Object.keys(POS);
 
 // `fill` is the order spots are filled when not enough kids show up; the last ones are left empty first.
 const FORMATIONS = {
+  FOUR_2_2: { label: "4v4 (no goalie): 2 defense, 2 forward", fill: ["LD", "RD", "LF", "RF"] },
   FIVE_2_1_2: { label: "5v5 (no goalie): 2 defense, 1 mid, 2 forward", fill: ["LD", "RD", "LF", "RF", "CM"] },
   SIX_2_3: { label: "6v6: 2 defense, 3 forward", fill: ["GK", "LD", "RD", "CF", "LF", "RF"] },
   SEVEN_2_3_1: { label: "7v7: 2 defense, 3 mid, 1 forward", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM"] },
@@ -452,7 +453,9 @@ function candidate(players, fill, periods, season) {
     }
 
     // Field spots: each goes to whoever likes it, or has played it least.
-    for (const pos of shuffle(onField.filter((k) => k !== "GK"))) {
+    // Spots someone on the field prefers are filled first, so that kid isn't used up elsewhere.
+    const liked = (pos) => (playing.some((p) => p.preferred.includes(pos)) ? 0 : 1);
+    for (const pos of shuffle(onField.filter((k) => k !== "GK")).sort((a, b) => liked(a) - liked(b))) {
       let pick = null, cost = Infinity;
       for (const p of playing) {
         const c = p.preferred.includes(pos) ? -25 : count(p.id, pos) * 10 + lineCount(p.id, POS[pos].line) * 3;

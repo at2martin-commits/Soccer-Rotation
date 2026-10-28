@@ -6,7 +6,7 @@ A web app that builds fair playing-time lineups for youth soccer teams.
 To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Android, ⋮ → Add to Home screen.
 
 - **Teams**: keep several teams (tap the team name at the top to switch). Each has its
-  own players, formation (5v5 with no goalie, 6v6, 7v7, or 9v9 with 3 or 2 defenders) and game format
+  own players, formation (4v4 or 5v5 with no goalie, 6v6, 7v7, or 9v9 with 3 or 2 defenders) and game format
   (4 quarters, 2 halves, or halves with a mid-half swap).
 - **Players**: add players, check off who's here today, and tap a name to rename them,
   mark who can't play goalie, or pick preferred positions. A kid with a preferred
