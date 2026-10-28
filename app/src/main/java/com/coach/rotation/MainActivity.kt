@@ -454,24 +454,37 @@ private fun GameScreen(team: Team, updateTeam: ((Team) -> Team) -> Unit, onShare
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Button(
-                    onClick = { if (plan == null || team.planSaved) makeLineup() else confirmNew = true },
-                    enabled = team.present.isNotEmpty(),
-                ) {
-                    Icon(Icons.Filled.Refresh, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (plan == null) "Make lineup" else "New lineup")
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(
+                        onClick = { if (plan == null || team.planSaved) makeLineup() else confirmNew = true },
+                        enabled = team.present.isNotEmpty(),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.Refresh, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (plan == null) "Make lineup" else "New lineup", maxLines = 1, softWrap = false)
+                    }
+                    if (plan != null) {
+                        OutlinedButton(onClick = {
+                            val title = "${team.name} – " + DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date())
+                            onShare(RotationPlanner.asText(plan, team.planPlayers, team.format, title))
+                        }) {
+                            Icon(Icons.Filled.Share, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Share", maxLines = 1, softWrap = false)
+                        }
+                    }
                 }
                 if (plan != null) {
-                    OutlinedButton(onClick = {
-                        val title = "${team.name} – " + DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date())
-                        onShare(RotationPlanner.asText(plan, team.planPlayers, team.format, title))
-                    }) { Icon(Icons.Filled.Share, "Share") }
-                    OutlinedButton(onClick = { confirmSave = true }, enabled = !team.planSaved && !attendanceChanged) {
+                    OutlinedButton(
+                        onClick = { confirmSave = true },
+                        enabled = !team.planSaved && !attendanceChanged,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Icon(Icons.Filled.Check, null)
                         Spacer(Modifier.width(6.dp))
-                        Text(if (team.planSaved) "Saved" else "Save game")
+                        Text(if (team.planSaved) "Game saved to season" else "Save game", maxLines = 1, softWrap = false)
                     }
                 }
             }
