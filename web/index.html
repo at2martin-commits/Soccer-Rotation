@@ -294,6 +294,11 @@ textarea.field { width: 100%; min-height: 120px; font-family: ui-monospace, Menl
 }
 .played-note svg { width: 20px; height: 20px; flex: none; color: var(--accent); }
 .dlg .lbl .hint { font-weight: 400; display: inline; }
+.report-preview { overflow-x: auto; background: #ffffff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.email-actions { display: grid; gap: 8px; }
+a.btn { text-decoration: none; color: inherit; }
+a.btn.primary { color: var(--accent-ink); }
+#picture-out img { width: 100%; border: 1px solid var(--line); border-radius: 8px; }
 
 @media (prefers-reduced-motion: no-preference) {
   .spot { transition: border-color 0.12s, box-shadow 0.12s; }
@@ -538,6 +543,133 @@ function lineupText(t, g) {
   return lines.join("\n");
 }
 
+// ------------------------------------------------------------------ League report
+
+function periodShort(format, i) {
+  if (format === "QUARTERS") return "Q" + (i + 1);
+  if (format === "HALVES") return "H" + (i + 1);
+  return (i < 2 ? "1" : "2") + (i % 2 === 0 ? "A" : "B");
+}
+/** Everything the league report shows, in one place for the text, table and picture versions. */
+function reportData(t, g) {
+  const names = gameNames(t, g);
+  const players = planPlayers(t, g);
+  const goals = goalsByPlayer([g]);
+  const absentIds = g.absent || t.players.filter((p) => !players.includes(p)).map((p) => p.id);
+  return {
+    title: t.name + (g.opponent ? " vs " + g.opponent : ""),
+    team: t.name,
+    opponent: g.opponent,
+    date: toDate(g.date).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" }),
+    game: FORMATIONS[g.formation].label.split(":")[0] + ", " + FORMATS[g.format].label,
+    unit: FORMATS[g.format].unit,
+    periods: g.plan.map((_, i) => periodShort(g.format, i)),
+    legend: g.format === "HALVES_SPLIT" ? "A = start of the half, B = after the mid-half swap" : "",
+    rows: summarize(g.plan, players).map((x) => ({
+      name: names[x.id],
+      cells: x.positions.map((k) => (k ? POS[k].short : "–")),
+      played: x.played + "/" + g.plan.length,
+      goals: goals[x.id] || 0,
+    })),
+    absent: absentIds.map((id) => names[id]).filter(Boolean),
+    totalGoals: g.goals.length,
+  };
+}
+function reportSubject(d) {
+  return d.title + " – " + d.date + " – playing time";
+}
+function reportText(d) {
+  const lines = [
+    "Team: " + d.team,
+    "Date: " + d.date,
+    "Opponent: " + (d.opponent || "—"),
+    "Game: " + d.game,
+    "",
+    "Playing time (" + d.unit + " played, then position each " + (d.unit === "quarters" ? "quarter" : d.unit === "halves" ? "half" : "segment") + "):",
+  ];
+  d.rows.forEach((r) => {
+    const spots = r.cells.map((c, i) => d.periods[i] + " " + (c === "–" ? "sat" : c)).join(", ");
+    lines.push("• " + r.name + ": " + r.played + " (" + spots + ")" + (r.goals ? " – " + r.goals + (r.goals === 1 ? " goal" : " goals") : ""));
+  });
+  if (d.legend) lines.push("", d.legend);
+  lines.push("", "Absent: " + (d.absent.length ? d.absent.join(", ") : "none"));
+  return lines.join("\n");
+}
+function reportHTML(d) {
+  const cell = "border:1px solid #c9d3c7;padding:6px 10px;text-align:center;";
+  const head = "background:#1f7a3f;color:#ffffff;font-weight:bold;";
+  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#18241c;">
+    <p style="margin:0 0 4px;font-size:18px;font-weight:bold;">${esc(d.title)}</p>
+    <p style="margin:0 0 10px;font-size:14px;color:#4a5a4f;">${esc(d.date)} · ${esc(d.game)}</p>
+    <table style="border-collapse:collapse;font-size:14px;">
+      <tr><th style="${cell}${head}text-align:left;">Player</th>${d.periods.map((p) => `<th style="${cell}${head}">${p}</th>`).join("")}<th style="${cell}${head}">Played</th><th style="${cell}${head}">Goals</th></tr>
+      ${d.rows.map((r, i) => `<tr style="background:${i % 2 ? "#f2f6f1" : "#ffffff"};"><td style="${cell}text-align:left;">${esc(r.name)}</td>${r.cells.map((c) => `<td style="${cell}${c === "–" ? "color:#8a968d;" : ""}">${c}</td>`).join("")}<td style="${cell}font-weight:bold;">${r.played}</td><td style="${cell}">${r.goals || ""}</td></tr>`).join("")}
+    </table>
+    ${d.legend ? `<p style="margin:8px 0 0;font-size:13px;color:#4a5a4f;">${esc(d.legend)}</p>` : ""}
+    <p style="margin:8px 0 0;font-size:13px;color:#4a5a4f;">Absent: ${esc(d.absent.length ? d.absent.join(", ") : "none")}</p>
+  </div>`;
+}
+/** Draws the report table as a picture (always light, like paper). */
+function reportCanvas(d) {
+  const scale = 2, pad = 28, rowH = 38, cellW = 62, playedW = 84, goalsW = 70;
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = "600 17px 'Source Sans 3', Arial, sans-serif";
+  const nameW = Math.max(150, ...d.rows.map((r) => probe.measureText(r.name).width + 28));
+  const tableW = nameW + cellW * d.periods.length + playedW + goalsW;
+  const notes = [d.legend, "Absent: " + (d.absent.length ? d.absent.join(", ") : "none")].filter(Boolean);
+  const top = 96;
+  const width = pad * 2 + tableW;
+  const height = top + rowH * (d.rows.length + 1) + 18 + notes.length * 24 + pad;
+  const c = document.createElement("canvas");
+  c.width = width * scale;
+  c.height = height * scale;
+  const x = c.getContext("2d");
+  x.scale(scale, scale);
+  x.fillStyle = "#ffffff";
+  x.fillRect(0, 0, width, height);
+  x.fillStyle = "#18241c";
+  x.font = "700 26px 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif";
+  x.fillText(d.title, pad, pad + 22);
+  x.fillStyle = "#4a5a4f";
+  x.font = "16px 'Source Sans 3', Arial, sans-serif";
+  x.fillText(d.date + " · " + d.game, pad, pad + 50);
+  const cols = [["Player", nameW, "left"], ...d.periods.map((p) => [p, cellW, "center"]), ["Played", playedW, "center"], ["Goals", goalsW, "center"]];
+  const row = (y, values, bg, fg, font) => {
+    x.fillStyle = bg;
+    x.fillRect(pad, y, tableW, rowH);
+    let cx = pad;
+    values.forEach((v, i) => {
+      const [, w, align] = cols[i];
+      x.fillStyle = typeof fg === "function" ? fg(v, i) : fg;
+      x.font = typeof font === "function" ? font(v, i) : font;
+      x.textAlign = align;
+      x.fillText(String(v), align === "left" ? cx + 12 : cx + w / 2, y + rowH / 2 + 6);
+      cx += w;
+    });
+    x.textAlign = "left";
+  };
+  row(top, cols.map((col) => col[0]), "#1f7a3f", "#ffffff", "700 16px 'Source Sans 3', Arial, sans-serif");
+  d.rows.forEach((r, i) => row(top + rowH * (i + 1), [r.name, ...r.cells, r.played, r.goals || ""], i % 2 ? "#f2f6f1" : "#ffffff",
+    (v, j) => (v === "–" ? "#8a968d" : "#18241c"),
+    (v, j) => (j === 0 ? "600 17px" : j === cols.length - 2 ? "700 17px" : "17px") + " 'Source Sans 3', Arial, sans-serif"));
+  // grid lines
+  x.strokeStyle = "#c9d3c7";
+  x.lineWidth = 1;
+  const bottom = top + rowH * (d.rows.length + 1);
+  for (let i = 0; i <= d.rows.length + 1; i++) {
+    x.beginPath(); x.moveTo(pad, top + rowH * i + 0.5); x.lineTo(pad + tableW, top + rowH * i + 0.5); x.stroke();
+  }
+  let cx = pad;
+  [...cols, null].forEach((col) => {
+    x.beginPath(); x.moveTo(Math.round(cx) + 0.5, top); x.lineTo(Math.round(cx) + 0.5, bottom); x.stroke();
+    if (col) cx += col[1];
+  });
+  x.fillStyle = "#4a5a4f";
+  x.font = "15px 'Source Sans 3', Arial, sans-serif";
+  notes.forEach((n, i) => x.fillText(n, pad, bottom + 28 + i * 24));
+  return c;
+}
+
 // ------------------------------------------------------------------ Dates
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -576,6 +708,7 @@ function normalize(s) {
       played: !!g.played,
       names: g.names || {},
       goals: Array.isArray(g.goals) ? g.goals : [],
+      ...(Array.isArray(g.absent) ? { absent: g.absent } : {}),
     }));
     if (!t.seasonCarry) {
       // Version 2 kept a single lineup plus running season totals. The lineup becomes a game
@@ -702,6 +835,7 @@ const ICON = {
   refresh: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
   share: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a3.3 3.3 0 0 0 0-1.39l7.05-4.11A3 3 0 1 0 15 5c0 .24.04.47.09.7L8.04 9.81a3 3 0 1 0 0 4.38l7.12 4.16c-.05.21-.08.43-.08.65A2.92 2.92 0 1 0 18 16.08z"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"/></svg>',
   back: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>',
 };
 
@@ -822,7 +956,8 @@ function gameView(t, g) {
     html += `<div class="btn-row">
       <span class="played-note grow">${ICON.check} Played</span>
       <button class="btn" type="button" data-action="share">${ICON.share} Share</button>
-    </div>`;
+    </div>
+    <button class="btn primary full" type="button" data-action="email-report">${ICON.mail} Email league director</button>`;
   }
 
   if (!plan) {
@@ -961,6 +1096,8 @@ function teamDialog(existing) {
   openDialog(`<h2>${existing ? "Edit team" : "New team"}</h2>
     <div class="group"><label class="lbl" for="team-name-input">Team name</label>
       <input class="field" id="team-name-input" value="${existing ? esc(existing.name) : ""}" placeholder="e.g. U8 Thunder" autocapitalize="words" autofocus></div>
+    <div class="group"><label class="lbl" for="team-director">League director's email <span class="hint">(optional, for game reports)</span></label>
+      <input class="field" type="email" id="team-director" value="${existing ? esc(existing.director || "") : ""}" placeholder="director@example.org" inputmode="email" autocomplete="email"></div>
     <div class="group"><span class="lbl">Players on the field</span>${radios("formation", FORMATIONS, f)}</div>
     <div class="group"><span class="lbl">Game</span>${radios("format", FORMATS, g)}</div>
     ${hasOpenLineups ? `<p class="hint">Changing the formation or game clears lineups for games not yet played. Played games keep theirs.</p>` : ""}
@@ -974,7 +1111,9 @@ function teamDialog(existing) {
       if (!name) { dlg.querySelector("#team-name-input").focus(); return; }
       const formation = dlg.querySelector('input[name="formation"]:checked').value;
       const format = dlg.querySelector('input[name="format"]:checked').value;
+      const director = dlg.querySelector("#team-director").value.trim();
       if (existing) {
+        existing.director = director;
         const keep = existing.formation === formation && existing.format === format;
         Object.assign(existing, { name, formation, format });
         if (!keep) {
@@ -983,6 +1122,7 @@ function teamDialog(existing) {
         }
       } else {
         const t = newTeam(name, formation, format);
+        t.director = director;
         state.teams.push(t);
         state.currentTeamId = t.id;
         ui.tab = "players";
@@ -1118,6 +1258,64 @@ function playerDialog(t, p) {
   };
   goalieBox.addEventListener("change", syncGoalieChip);
   syncGoalieChip();
+}
+
+function emailDialog(t, g) {
+  const d = reportData(t, g);
+  const subject = reportSubject(d);
+  const body = reportText(d);
+  const mailHref = (to) => "mailto:" + encodeURIComponent(to.trim()).replace(/%40/g, "@") +
+    "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+  openDialog(`<h2>Email league director</h2>
+    <div class="report-preview">${reportHTML(d)}</div>
+    <div class="group"><label class="lbl" for="director-email">League director's email</label>
+      <input class="field" type="email" id="director-email" value="${esc(t.director || "")}" placeholder="director@example.org" autocomplete="email" inputmode="email"></div>
+    <div class="email-actions">
+      <a class="btn primary" id="mail-link" href="${mailHref(t.director || "")}">${ICON.mail} Open email</a>
+      <button class="btn" type="button" data-d="picture">${ICON.share} Send as picture</button>
+      <button class="btn" type="button" data-d="copy">Copy table</button>
+    </div>
+    <p class="hint"><strong>Open email</strong> fills in the address, subject and playing time as text. <strong>Send as picture</strong> shares an image of the table to attach. <strong>Copy table</strong> lets you paste the table into an email.</p>
+    <div id="picture-out" hidden></div>
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button></div>`, {
+    picture: async () => {
+      saveDirector();
+      const canvas = reportCanvas(d);
+      const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+      const file = blob && new File([blob], (d.title + " " + g.date).replace(/[^\w-]+/g, "-") + ".png", { type: "image/png" });
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: subject, text: subject }); return; }
+        catch (err) { if (err && err.name === "AbortError") return; }
+      }
+      // No file sharing here: show the picture so it can be saved with a long press.
+      const out = dlg.querySelector("#picture-out");
+      out.hidden = false;
+      out.innerHTML = `<p class="hint">Press and hold the picture to save or share it, then attach it to your email.</p><img alt="Playing time table" src="${canvas.toDataURL("image/png")}">`;
+      out.scrollIntoView({ block: "nearest" });
+    },
+    copy: async () => {
+      saveDirector();
+      try {
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/html": new Blob([reportHTML(d)], { type: "text/html" }),
+          "text/plain": new Blob([body], { type: "text/plain" }),
+        })]);
+        toast("Table copied. Paste it into your email.");
+      } catch (e) {
+        try { await navigator.clipboard.writeText(body); toast("Copied as text"); }
+        catch (e2) { textDialog("Playing time", subject + "\n\n" + body); }
+      }
+    },
+  });
+  const input = dlg.querySelector("#director-email");
+  const link = dlg.querySelector("#mail-link");
+  function saveDirector() {
+    const v = input.value.trim();
+    if (v !== (t.director || "")) { t.director = v; commit(); }
+  }
+  input.addEventListener("input", () => { link.href = mailHref(input.value); });
+  input.addEventListener("change", saveDirector);
+  link.addEventListener("click", saveDirector);
 }
 
 function textDialog(title, text) {
@@ -1298,10 +1496,16 @@ document.getElementById("main").addEventListener("click", async (e) => {
     case "mark-played":
       confirmDialog("Mark this game as played?", "It's added to the season totals, so future lineups give more time to kids who've sat more.", "Mark as played", () => {
         g.played = true;
-        planPlayers(t, g).forEach((p) => { g.names[p.id] = p.name; });
+        const inLineup = planPlayers(t, g);
+        inLineup.forEach((p) => { g.names[p.id] = p.name; });
+        g.absent = t.players.filter((p) => !inLineup.includes(p)).map((p) => p.id);
+        g.absent.forEach((id) => { g.names[id] = t.players.find((p) => p.id === id).name; });
         commit();
         toast("Game marked as played");
       });
+      break;
+    case "email-report":
+      emailDialog(t, g);
       break;
     case "remove-goal": {
       const [x] = g.goals.splice(Number(b.dataset.i), 1);
