@@ -599,8 +599,11 @@ function reportHTML(d) {
   const cell = "border:1px solid #c9d3c7;padding:6px 10px;text-align:center;color:#18241c;font-family:Arial,Helvetica,sans-serif;font-size:14px;";
   const head = "background:#1f7a3f;color:#ffffff;font-weight:bold;";
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#18241c;">
-    <p style="margin:0 0 4px;font-size:18px;font-weight:bold;">${esc(d.title)}</p>
-    <p style="margin:0 0 10px;font-size:14px;color:#4a5a4f;">${esc(d.date)} · ${esc(d.game)}</p>
+    <p style="margin:0 0 6px;font-size:18px;font-weight:bold;">Playing time report</p>
+    <table style="border-collapse:collapse;font-size:14px;color:#18241c;margin:0 0 10px;">
+      ${[["Team", d.team], ["Opponent", d.opponent || "—"], ["Date", d.date], ["Game", d.game]].map(([k, v]) =>
+        `<tr><td style="padding:1px 12px 1px 0;color:#4a5a4f;font-weight:bold;font-family:Arial,Helvetica,sans-serif;font-size:14px;">${k}</td><td style="padding:1px 0;color:#18241c;font-family:Arial,Helvetica,sans-serif;font-size:14px;">${esc(v)}</td></tr>`).join("")}
+    </table>
     <table style="border-collapse:collapse;font-size:14px;color:#18241c;background:#ffffff;">
       <tr><th style="${cell}${head}text-align:left;">Player</th>${d.periods.map((p) => `<th style="${cell}${head}">${p}</th>`).join("")}<th style="${cell}${head}">Played</th><th style="${cell}${head}">Goals</th></tr>
       ${d.rows.map((r, i) => `<tr style="background:${i % 2 ? "#f2f6f1" : "#ffffff"};"><td style="${cell}text-align:left;">${esc(r.name)}</td>${r.cells.map((c) => `<td style="${cell}${c === "–" ? "color:#8a968d;" : ""}">${c}</td>`).join("")}<td style="${cell}font-weight:bold;">${r.played}</td><td style="${cell}">${r.goals || ""}</td></tr>`).join("")}
@@ -617,8 +620,12 @@ function reportCanvas(d) {
   const nameW = Math.max(150, ...d.rows.map((r) => probe.measureText(r.name).width + 28));
   const tableW = nameW + cellW * d.periods.length + playedW + goalsW;
   const notes = [d.legend, "Absent: " + (d.absent.length ? d.absent.join(", ") : "none")].filter(Boolean);
-  const top = 96;
-  const width = pad * 2 + tableW;
+  const facts = [["Team", d.team], ["Opponent", d.opponent || "—"], ["Date", d.date], ["Game", d.game]];
+  const labelW = 100, factH = 28;
+  probe.font = "18px 'Source Sans 3', Arial, sans-serif";
+  const factsW = labelW + Math.max(...facts.map(([, v]) => probe.measureText(v).width));
+  const top = pad + 40 + facts.length * factH + 18;
+  const width = pad * 2 + Math.max(tableW, factsW);
   const height = top + rowH * (d.rows.length + 1) + 18 + notes.length * 24 + pad;
   const c = document.createElement("canvas");
   c.width = width * scale;
@@ -627,12 +634,18 @@ function reportCanvas(d) {
   x.scale(scale, scale);
   x.fillStyle = "#ffffff";
   x.fillRect(0, 0, width, height);
-  x.fillStyle = "#18241c";
-  x.font = "700 26px 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif";
-  x.fillText(d.title, pad, pad + 22);
-  x.fillStyle = "#4a5a4f";
-  x.font = "16px 'Source Sans 3', Arial, sans-serif";
-  x.fillText(d.date + " · " + d.game, pad, pad + 50);
+  x.fillStyle = "#1f7a3f";
+  x.font = "700 28px 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif";
+  x.fillText("Playing time report", pad, pad + 24);
+  facts.forEach(([k, v], i) => {
+    const y = pad + 40 + factH * i + 20;
+    x.fillStyle = "#4a5a4f";
+    x.font = "700 16px 'Source Sans 3', Arial, sans-serif";
+    x.fillText(k.toUpperCase(), pad, y);
+    x.fillStyle = "#18241c";
+    x.font = (k === "Team" || k === "Opponent" ? "700 " : "") + "18px 'Source Sans 3', Arial, sans-serif";
+    x.fillText(v, pad + labelW, y);
+  });
   const cols = [["Player", nameW, "left"], ...d.periods.map((p) => [p, cellW, "center"]), ["Played", playedW, "center"], ["Goals", goalsW, "center"]];
   const row = (y, values, bg, fg, font) => {
     x.fillStyle = bg;
