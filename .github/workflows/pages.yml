@@ -24,8 +24,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
+      # The page is written without a doctype (the claude.ai host adds its own); add one here
+      # so browsers use standards mode instead of quirks mode.
+      - name: Add doctype
+        run: |
+          mkdir -p site
+          { printf '<!doctype html>\n<html lang="en">\n'; cat web/index.html; } > site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: web
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4

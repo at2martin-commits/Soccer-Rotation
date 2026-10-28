@@ -294,7 +294,7 @@ textarea.field { width: 100%; min-height: 120px; font-family: ui-monospace, Menl
 }
 .played-note svg { width: 20px; height: 20px; flex: none; color: var(--accent); }
 .dlg .lbl .hint { font-weight: 400; display: inline; }
-.report-preview { overflow-x: auto; background: #ffffff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.report-preview { overflow-x: auto; background: #ffffff; color: #18241c; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .email-actions { display: grid; gap: 8px; }
 a.btn { text-decoration: none; color: inherit; }
 a.btn.primary { color: var(--accent-ink); }
@@ -596,12 +596,12 @@ function reportText(d) {
   return lines.join("\n");
 }
 function reportHTML(d) {
-  const cell = "border:1px solid #c9d3c7;padding:6px 10px;text-align:center;";
+  const cell = "border:1px solid #c9d3c7;padding:6px 10px;text-align:center;color:#18241c;font-family:Arial,Helvetica,sans-serif;font-size:14px;";
   const head = "background:#1f7a3f;color:#ffffff;font-weight:bold;";
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#18241c;">
     <p style="margin:0 0 4px;font-size:18px;font-weight:bold;">${esc(d.title)}</p>
     <p style="margin:0 0 10px;font-size:14px;color:#4a5a4f;">${esc(d.date)} · ${esc(d.game)}</p>
-    <table style="border-collapse:collapse;font-size:14px;">
+    <table style="border-collapse:collapse;font-size:14px;color:#18241c;background:#ffffff;">
       <tr><th style="${cell}${head}text-align:left;">Player</th>${d.periods.map((p) => `<th style="${cell}${head}">${p}</th>`).join("")}<th style="${cell}${head}">Played</th><th style="${cell}${head}">Goals</th></tr>
       ${d.rows.map((r, i) => `<tr style="background:${i % 2 ? "#f2f6f1" : "#ffffff"};"><td style="${cell}text-align:left;">${esc(r.name)}</td>${r.cells.map((c) => `<td style="${cell}${c === "–" ? "color:#8a968d;" : ""}">${c}</td>`).join("")}<td style="${cell}font-weight:bold;">${r.played}</td><td style="${cell}">${r.goals || ""}</td></tr>`).join("")}
     </table>
