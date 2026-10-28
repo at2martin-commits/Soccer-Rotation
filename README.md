@@ -26,7 +26,9 @@ To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Andr
   **Email table** (copies the formatted table and opens an email to the director to paste it
   into) and **Download picture**. The director's address is saved per team.
 - **Season**: tap **Mark as played** after a game and future lineups give extra time to
-  kids who've sat more, and spread goalie turns across the season.
+  kids who've sat more, and spread goalie turns across the season. **Archive season**
+  saves the totals and played games under **Past seasons** (with each game's lineup) and
+  starts a fresh season.
 
 Each coach's teams are saved in their own phone's browser. Use **Back up or move data**
 in the team menu to keep a copy or move to another phone.

@@ -793,6 +793,12 @@ function normalize(s) {
       }
       t.seasonCarry = carry;
     }
+    t.archives = (Array.isArray(t.archives) ? t.archives : []).map((a) => ({
+      ...a,
+      names: a.names || {},
+      carry: a.carry || {},
+      games: (a.games || []).map((g) => ({ ...g, goals: Array.isArray(g.goals) ? g.goals : [], names: g.names || {} })),
+    }));
     delete t.plan;
     delete t.planSaved;
     delete t.season;
@@ -859,6 +865,7 @@ async function initCloud() {
 const team = () => state.teams.find((t) => t.id === state.currentTeamId) || state.teams[0] || null;
 const present = (t) => t.players.filter((p) => !t.absent.includes(p.id));
 const currentGame = (t) => (t && ui.gameId != null ? t.games.find((g) => g.id === ui.gameId) || null : null);
+const currentArchive = (t) => (t && ui.archiveId != null ? t.archives.find((a) => a.id === ui.archiveId) || null : null);
 function planPlayers(t, g) {
   if (!g.plan || !g.plan.length) return [];
   const ids = new Set([...Object.values(g.plan[0].positions), ...g.plan[0].bench]);
@@ -886,7 +893,20 @@ function sameIds(a, b) {
   return a.length === b.length && a.every((p) => b.some((q) => q.id === p.id));
 }
 function newTeam(name, formation, format) {
-  return { id: state.nextId++, name, formation, format, players: [], absent: [], games: [], seasonCarry: {} };
+  return { id: state.nextId++, name, formation, format, players: [], absent: [], games: [], seasonCarry: {}, archives: [] };
+}
+const planIds = (g) => (g.plan && g.plan.length ? [...new Set([...Object.values(g.plan[0].positions), ...g.plan[0].bench])] : []);
+/** Totals for an archived season, from the games saved with it (players may have left since). */
+function archiveTotals(a) {
+  let totals = JSON.parse(JSON.stringify(a.carry || {}));
+  a.games.forEach((g) => { if (g.plan) totals = record(g.plan, planIds(g).map((id) => ({ id })), totals); });
+  return totals;
+}
+/** "Fall 2026" etc., from the first played game. */
+function suggestSeasonName(t) {
+  const first = t.games.filter((g) => g.played).map((g) => g.date).sort()[0] || todayStr();
+  const d = toDate(first), m = d.getMonth();
+  return (m <= 4 ? "Spring" : m <= 6 ? "Summer" : "Fall") + " " + d.getFullYear();
 }
 
 // ------------------------------------------------------------------ Rendering
@@ -1034,8 +1054,28 @@ function gameView(t, g) {
 
   const byId = Object.fromEntries(t.players.map((p) => [p.id, p]));
   const names = gameNames(t, g);
-  plan.forEach((q, qi) => {
-    const sel = ui.selected && ui.selected.qi === qi ? ui.selected.slot : null;
+  html += periodsHTML(g, names, byId, true);
+
+  if (g.goals.length) {
+    const list = g.goals
+      .map((x, i) => ({ ...x, i }))
+      .sort((a, b) => a.p - b.p || a.i - b.i)
+      .map((x) => `<li><span><span class="gp">${esc(periodName(g.format, x.p))}</span> ${esc(names[x.id] || "—")}</span>
+        <button class="icon-btn" type="button" data-action="remove-goal" data-i="${x.i}" aria-label="Remove ${esc(names[x.id] || "")}'s goal in ${esc(periodName(g.format, x.p))}">✕</button></li>`)
+      .join("");
+    html += `<section class="panel"><h2>Goals · ${g.goals.length}</h2><ul class="goal-list">${list}</ul></section>`;
+  }
+
+  html += playingTimeHTML(g, planPlayers(t, g).map((p) => p.id), names);
+  if (g.played) html += `<button class="btn" type="button" data-action="unmark-played">Mark as not played</button>`;
+  return html;
+}
+
+/** The pitch cards for every period. `interactive` makes spots tappable (swaps, goals). */
+function periodsHTML(g, names, byId, interactive) {
+  let html = "";
+  g.plan.forEach((q, qi) => {
+    const sel = interactive && ui.selected && ui.selected.qi === qi ? ui.selected.slot : null;
     const spot = (slot, label) => {
       const id = playerAt(q, slot);
       const p = id != null ? byId[id] : null;
@@ -1043,8 +1083,11 @@ function gameView(t, g) {
       const liked = p && slot.startsWith("F:") && p.preferred.includes(slot.slice(2));
       const goals = id != null ? goalCount(g, id, qi) : 0;
       const badge = goals ? `<span class="goal" aria-label="${goals} ${goals === 1 ? "goal" : "goals"}">⚽${goals > 1 ? goals : ""}</span>` : "";
-      return `<button type="button" class="spot${sel === slot ? " sel" : ""}${name ? "" : " empty-spot"}" data-action="spot" data-qi="${qi}" data-slot="${slot}" aria-pressed="${sel === slot}">
-        ${badge}<span class="pos">${label}${liked ? " ★" : ""}</span><span class="who">${name ? esc(name) : "—"}</span></button>`;
+      const inner = `${badge}<span class="pos">${label}${liked ? " ★" : ""}</span><span class="who">${name ? esc(name) : "—"}</span>`;
+      const cls = `spot${sel === slot ? " sel" : ""}${name ? "" : " empty-spot"}`;
+      return interactive
+        ? `<button type="button" class="${cls}" data-action="spot" data-qi="${qi}" data-slot="${slot}" aria-pressed="${sel === slot}">${inner}</button>`
+        : `<div class="${cls}">${inner}</div>`;
     };
     // Rows come from the lineup itself, so past games still draw right after a formation change.
     const rows = ["FORWARD", "MIDFIELD", "DEFENSE", "GOAL"]
@@ -1059,49 +1102,126 @@ function gameView(t, g) {
       <div class="period-head"><h2>${esc(periodName(g.format, qi))}</h2></div>
       <div class="pitch${q.positions.GK == null ? " no-keeper" : ""}">${rows}</div>${bench}</section>`;
   });
-
-  if (g.goals.length) {
-    const list = g.goals
-      .map((x, i) => ({ ...x, i }))
-      .sort((a, b) => a.p - b.p || a.i - b.i)
-      .map((x) => `<li><span><span class="gp">${esc(periodName(g.format, x.p))}</span> ${esc(names[x.id] || "—")}</span>
-        <button class="icon-btn" type="button" data-action="remove-goal" data-i="${x.i}" aria-label="Remove ${esc(names[x.id] || "")}'s goal in ${esc(periodName(g.format, x.p))}">✕</button></li>`)
-      .join("");
-    html += `<section class="panel"><h2>Goals · ${g.goals.length}</h2><ul class="goal-list">${list}</ul></section>`;
-  }
-
-  const players = planPlayers(t, g);
-  const unit = FORMATS[g.format].unit;
-  const rows = summarize(plan, players).map((x, i) => `
-    <tr><td class="nm">${esc(players[i].name)}${goalCount(g, x.id) ? ` <span class="goal-inline">⚽${goalCount(g, x.id) > 1 ? goalCount(g, x.id) : ""}</span>` : ""}</td>
-    <td class="seq">${x.positions.map((k) => (k ? `<span class="tag">${POS[k].short}</span>` : `<span class="tag sat">–</span>`)).join("")}</td>
-    <td class="tot">${x.played}/${plan.length}</td></tr>`).join("");
-  html += `<section class="panel"><h2>Playing time</h2><p class="hint">Positions by ${unit === "halves" ? "half" : unit === "quarters" ? "quarter" : "segment"}, and ${unit} played.</p>
-    <table class="timeline"><tbody>${rows}</tbody></table></section>`;
-  if (g.played) html += `<button class="btn" type="button" data-action="unmark-played">Mark as not played</button>`;
   return html;
 }
 
+function playingTimeHTML(g, ids, names) {
+  const unit = FORMATS[g.format].unit;
+  const rows = summarize(g.plan, ids.map((id) => ({ id }))).map((x) => `
+    <tr><td class="nm">${esc(names[x.id] || "—")}${goalCount(g, x.id) ? ` <span class="goal-inline">⚽${goalCount(g, x.id) > 1 ? goalCount(g, x.id) : ""}</span>` : ""}</td>
+    <td class="seq">${x.positions.map((k) => (k ? `<span class="tag">${POS[k].short}</span>` : `<span class="tag sat">–</span>`)).join("")}</td>
+    <td class="tot">${x.played}/${g.plan.length}</td></tr>`).join("");
+  return `<section class="panel"><h2>Playing time</h2><p class="hint">Positions by ${unit === "halves" ? "half" : unit === "quarters" ? "quarter" : "segment"}, and ${unit} played.</p>
+    <table class="timeline"><tbody>${rows}</tbody></table></section>`;
+}
+
+function totalsTable(rows, keeper) {
+  return `<div class="table-wrap"><table class="season">
+    <thead><tr><th>Player</th><th>Games</th><th>Played</th><th>Sat</th>${keeper ? "<th>Goalie</th>" : ""}<th>Goals</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.games}</td><td>${r.played}</td><td>${r.sat}</td>${keeper ? `<td>${r.goalie}</td>` : ""}<td>${r.goals}</td></tr>`).join("")
+      || `<tr><td colspan="${keeper ? 6 : 5}">No players yet.</td></tr>`}</tbody>
+  </table></div>`;
+}
+
 function seasonView(t) {
+  const a = currentArchive(t);
+  if (a) {
+    const g = ui.archiveGameId != null ? a.games.find((x) => x.id === ui.archiveGameId) : null;
+    return g ? archivedGameView(t, a, g) : archiveView(t, a);
+  }
   const totals = seasonTotals(t);
   const played = t.games.filter((g) => g.played).length;
   const goals = goalsByPlayer(t.games);
   const keeper = hasGoalie(t.formation);
   const rows = t.players.map((p) => {
     const s = totals[p.id] || { games: 0, played: 0, sat: 0, goalie: 0 };
-    return `<tr><td>${esc(p.name)}</td><td>${s.games}</td><td>${s.played}</td><td>${s.sat}</td>${keeper ? `<td>${s.goalie}</td>` : ""}<td>${goals[p.id] || 0}</td></tr>`;
-  }).join("");
+    return { name: p.name, ...s, goals: goals[p.id] || 0 };
+  });
+  const past = t.archives.slice().sort((x, y) => y.archivedAt - x.archivedAt).map((x) => `
+    <button class="game-row" type="button" data-action="open-archive" data-id="${x.id}">
+      <span class="gmain"><strong>${esc(x.name)}</strong><small>${x.games.length} ${x.games.length === 1 ? "game" : "games"} · archived ${esc(new Date(x.archivedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))}</small></span>
+      <span class="status">View</span>
+    </button>`).join("");
   return `
     <div class="panel">
       <h2>Season totals</h2>
       <p class="hint">${played} ${played === 1 ? "game" : "games"} marked played for ${esc(t.name)}. New lineups give extra time to kids who've sat more${keeper ? ", and spread goalie turns" : ""}. Played and Sat count ${FORMATS[t.format].unit}. Goals count every game.</p>
-      <div class="table-wrap"><table class="season">
-        <thead><tr><th>Player</th><th>Games</th><th>Played</th><th>Sat</th>${keeper ? "<th>Goalie</th>" : ""}<th>Goals</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${keeper ? 6 : 5}">No players yet.</td></tr>`}</tbody>
-      </table></div>
+      ${totalsTable(rows, keeper)}
     </div>
-    <button class="btn" type="button" data-action="new-season" ${t.games.length || Object.keys(t.seasonCarry).length ? "" : "disabled"}>Start new season</button>`;
+    <button class="btn" type="button" data-action="archive-season" ${played || Object.keys(t.seasonCarry).length ? "" : "disabled"}>Archive season and start a new one</button>
+    ${past ? `<h3 class="section-title">Past seasons</h3><div class="game-list">${past}</div>` : ""}`;
 }
+
+function archiveView(t, a) {
+  const totals = archiveTotals(a);
+  const goals = goalsByPlayer(a.games);
+  const keeper = a.games.some((g) => g.plan && g.plan.some((q) => q.positions.GK != null));
+  const ids = [...new Set([...Object.keys(totals), ...Object.keys(goals)].map(Number))];
+  const nameOf = (id) => a.names[id] || (t.players.find((p) => p.id === id) || {}).name || "—";
+  const rows = ids.map((id) => ({ name: nameOf(id), ...(totals[id] || { games: 0, played: 0, sat: 0, goalie: 0 }), goals: goals[id] || 0 }))
+    .sort((x, y) => x.name.localeCompare(y.name));
+  const games = a.games.slice().sort((x, y) => y.date.localeCompare(x.date)).map((g) => {
+    const d = toDate(g.date);
+    return `<button class="game-row" type="button" data-action="open-archive-game" data-id="${g.id}">
+      <span class="gdate" aria-hidden="true"><span class="mon">${esc(d.toLocaleDateString(undefined, { month: "short" }))}</span><span class="day">${d.getDate()}</span><span class="dow">${esc(d.toLocaleDateString(undefined, { weekday: "short" }))}</span></span>
+      <span class="gmain"><strong>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</strong><small>${esc(longDate(g.date))}</small></span>
+      <span class="status s-played">Played</span></button>`;
+  }).join("");
+  return `
+    <div class="game-head">
+      <button class="back" type="button" data-action="archive-back">${ICON.back} Season</button>
+      <div class="gh-title"><h2>${esc(a.name)}</h2><p class="hint">${esc(t.name)} · ${a.games.length} ${a.games.length === 1 ? "game" : "games"} · archived ${esc(new Date(a.archivedAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }))}</p></div>
+    </div>
+    <div class="panel"><h2>Season totals</h2>${totalsTable(rows, keeper)}</div>
+    ${games ? `<h3 class="section-title">Games</h3><div class="game-list">${games}</div>` : ""}
+    <button class="btn danger" type="button" data-action="delete-archive">Delete this archived season</button>`;
+}
+
+function archivedGameView(t, a, g) {
+  const names = { ...a.names, ...g.names };
+  return `
+    <div class="game-head">
+      <button class="back" type="button" data-action="archive-game-back">${ICON.back} ${esc(a.name)}</button>
+      <div class="gh-title"><h2>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</h2><p class="hint">${esc(longDate(g.date))} · ${esc(a.name)}</p></div>
+    </div>
+    ${periodsHTML(g, names, {}, false)}
+    ${g.goals.length ? `<section class="panel"><h2>Goals · ${g.goals.length}</h2><ul class="goal-list">${g.goals.slice().sort((x, y) => x.p - y.p)
+      .map((x) => `<li><span><span class="gp">${esc(periodName(g.format, x.p))}</span> ${esc(names[x.id] || "—")}</span></li>`).join("")}</ul></section>` : ""}
+    ${playingTimeHTML(g, planIds(g), names)}`;
+}
+
+function archiveDialog(t) {
+  const played = t.games.filter((g) => g.played);
+  const unplayed = t.games.length - played.length;
+  openDialog(`<h2>Archive season</h2>
+    <div class="group"><label class="lbl" for="season-name">Season name</label>
+      <input class="field" id="season-name" value="${esc(suggestSeasonName(t))}" autocapitalize="words"></div>
+    <p class="hint">Saves this season's totals and ${played.length} played ${played.length === 1 ? "game" : "games"} under Past seasons, then starts a fresh season. Players stay.${unplayed ? ` ${unplayed} ${unplayed === 1 ? "game that wasn't" : "games that weren't"} marked played will be removed.` : ""}</p>
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+      <button class="btn primary" type="button" data-d="ok">Archive season</button></div>`, {
+    ok: () => {
+      const name = dlg.querySelector("#season-name").value.trim() || suggestSeasonName(t);
+      const names = {};
+      played.forEach((g) => Object.assign(names, g.names));
+      t.players.forEach((p) => { names[p.id] = p.name; });
+      t.archives.push({
+        id: state.nextId++,
+        name,
+        archivedAt: Date.now(),
+        games: JSON.parse(JSON.stringify(played)),
+        carry: JSON.parse(JSON.stringify(t.seasonCarry || {})),
+        names,
+      });
+      t.games = [];
+      t.seasonCarry = {};
+      ui.gameId = null;
+      closeDialog();
+      commit();
+      toast(name + " archived");
+    },
+  });
+}
+
 
 // ------------------------------------------------------------------ Dialogs
 
@@ -1145,7 +1265,7 @@ function teamMenu() {
       ${t ? `<button class="btn" type="button" data-d="edit">${ICON.edit} Edit this team</button>` : ""}
       <button class="btn primary" type="button" data-d="new">${ICON.plus} New team</button>
     </div>`, {
-    pick: (b) => { state.currentTeamId = Number(b.dataset.id); ui.selected = null; ui.gameId = null; closeDialog(); commit(); },
+    pick: (b) => { state.currentTeamId = Number(b.dataset.id); ui.selected = null; ui.gameId = null; ui.archiveId = null; closeDialog(); commit(); },
     edit: () => teamDialog(team()),
     new: () => teamDialog(null),
     backup: backupDialog,
@@ -1517,6 +1637,7 @@ document.getElementById("team-btn").addEventListener("click", () => (state.teams
 document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
   // Tapping Games while already there goes back to the list.
   if (b.dataset.tab === "games" && ui.tab === "games") ui.gameId = null;
+  if (b.dataset.tab === "season" && ui.tab === "season") { ui.archiveId = null; ui.archiveGameId = null; }
   ui.tab = b.dataset.tab;
   ui.selected = null;
   render();
@@ -1651,14 +1772,42 @@ document.getElementById("main").addEventListener("click", async (e) => {
       commit();
       toast("Removed from season totals");
       break;
-    case "new-season":
-      confirmDialog("Start a new season?", "This removes all of " + t.name + "'s games, past and upcoming, and clears season totals. Players stay.", "Start new season", () => {
-        t.games = [];
-        t.seasonCarry = {};
-        ui.gameId = null;
-        commit();
-      });
+    case "archive-season":
+      archiveDialog(t);
       break;
+    case "open-archive":
+      ui.archiveId = Number(b.dataset.id);
+      ui.archiveGameId = null;
+      render();
+      window.scrollTo(0, 0);
+      break;
+    case "archive-back":
+      ui.archiveId = null;
+      render();
+      break;
+    case "open-archive-game":
+      ui.archiveGameId = Number(b.dataset.id);
+      render();
+      window.scrollTo(0, 0);
+      break;
+    case "archive-game-back":
+      ui.archiveGameId = null;
+      render();
+      break;
+    case "delete-archive": {
+      const a = currentArchive(t);
+      if (!a) break;
+      if (b.dataset.armed) {
+        t.archives = t.archives.filter((x) => x.id !== a.id);
+        ui.archiveId = null;
+        commit();
+        toast(a.name + " deleted");
+      } else {
+        b.dataset.armed = "1";
+        b.textContent = "Tap again to delete " + a.name + " for good";
+      }
+      break;
+    }
     case "spot": {
       const qi = Number(b.dataset.qi), slot = b.dataset.slot;
       const cur = ui.selected;
