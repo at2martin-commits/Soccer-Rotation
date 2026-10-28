@@ -10,7 +10,8 @@ To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Andr
   (4 quarters, 2 halves, or halves with a mid-half swap).
 - **Players**: add players, check off who's here today, and tap a name to rename them,
   mark who can't play goalie, or pick preferred positions. A kid with a preferred
-  position is put there whenever they're on the field.
+  position plays there more often (and nearby spots on the same line a bit more), but
+  still rotates, and every kid gets a turn at forward and defense first.
 - **Games**: add the dates from your schedule (with an optional opponent). On game day,
   open the game and make its lineup. Past games keep their lineups to look back on.
 - **Lineups**: each game's lineup covers every period at once. Play time is split as evenly as

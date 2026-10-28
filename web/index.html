@@ -452,13 +452,17 @@ function candidate(players, fill, periods, season) {
       lastGoalie = goalie.id;
     }
 
-    // Field spots: each goes to whoever likes it, or has played it least.
+    // Field spots: whoever has played it (and its line) least, leaning toward kids who like it.
+    // The lean fades with each repeat so preferred kids still rotate; a little noise keeps the
+    // candidates varied for the scoring step to choose between.
     // Spots someone on the field prefers are filled first, so that kid isn't used up elsewhere.
     const liked = (pos) => (playing.some((p) => p.preferred.includes(pos)) ? 0 : 1);
     for (const pos of shuffle(onField.filter((k) => k !== "GK")).sort((a, b) => liked(a) - liked(b))) {
       let pick = null, cost = Infinity;
       for (const p of playing) {
-        const c = p.preferred.includes(pos) ? -25 : count(p.id, pos) * 10 + lineCount(p.id, POS[pos].line) * 3;
+        const sameLine = p.preferred.some((k) => k !== pos && POS[k].line === POS[pos].line);
+        const c = count(p.id, pos) * 10 + lineCount(p.id, POS[pos].line) * 3 + Math.random() * 6 -
+          (p.preferred.includes(pos) ? (count(p.id, pos) ? 12 : 22) : sameLine ? 6 : 0);
         if (c < cost) { cost = c; pick = p; }
       }
       positions[pos] = pick.id;
@@ -477,6 +481,7 @@ function score(plan, players, season) {
   let s = 0;
   const sat = sums.map((x) => x.sat);
   if (sat.length) s += (Math.max(...sat) - Math.min(...sat)) * 1000;
+  const gameLines = new Set(plan.flatMap((q) => Object.keys(q.positions).map((k) => POS[k].line)));
   const eligible = players.filter((p) => p.goalie);
   const fewestSeasonGoalie = eligible.length ? Math.min(...eligible.map((p) => (season[p.id] || {}).goalie || 0)) : 0;
   sums.forEach((x, i) => {
@@ -487,12 +492,25 @@ function score(plan, players, season) {
     if (gk > 1 && !likesGoal) s += (gk - 1) * (gk - 1) * 60;
     if (!likesGoal) s += gk * (((season[p.id] || {}).goalie || 0) - fewestSeasonGoalie) * 30;
     for (let j = 1; j < x.positions.length; j++) if (!x.positions[j] && !x.positions[j - 1]) s += 40;
-    s -= x.positions.filter((k) => k && p.preferred.includes(k)).length * 40;
+    // Preferred spots: a big plus the first time, a smaller one after that, and a little for
+    // another spot on the same line. Repeats and one-line games still cost, so kids rotate.
+    let exact = 0;
+    x.positions.forEach((k) => {
+      if (!k || k === "GK") return;
+      if (p.preferred.includes(k)) { s -= exact === 0 ? 30 : 18; exact++; }
+      else if (p.preferred.some((q) => q !== "GK" && POS[q].line === POS[k].line)) s -= 8;
+    });
     const repeats = {};
-    x.positions.filter((k) => k && !p.preferred.includes(k)).forEach((k) => { repeats[k] = (repeats[k] || 0) + 1; });
+    x.positions.filter((k) => k && k !== "GK").forEach((k) => { repeats[k] = (repeats[k] || 0) + 1; });
     Object.values(repeats).forEach((n) => { if (n > 1) s += (n - 1) * 8; });
     const lines = x.positions.filter((k) => k && k !== "GK").map((k) => POS[k].line);
-    if (!p.preferred.length && lines.length >= 2 && new Set(lines).size === 1) s += 5;
+    if (lines.length >= 2 && new Set(lines).size === 1) s += 20;
+    // Every kid on the field for 2+ periods gets a turn at forward and at defense, before
+    // anyone's preference earns them extra turns there.
+    if (lines.length >= 2) {
+      if (gameLines.has("FORWARD") && !lines.includes("FORWARD")) s += 120;
+      if (gameLines.has("DEFENSE") && !lines.includes("DEFENSE")) s += 60;
+    }
   });
   return s;
 }
@@ -1220,7 +1238,7 @@ function playerDialog(t, p) {
       <input class="field" id="player-name-input" value="${esc(p.name)}" autocapitalize="words"></div>
     ${hasGoalie(t.formation) ? `<label class="switch-row" for="player-goalie"><span>Can play goalie</span><input type="checkbox" id="player-goalie" ${p.goalie ? "checked" : ""}></label>` : ""}
     <div class="group"><span class="lbl">Preferred positions</span>
-      <p class="hint">The lineup puts them here whenever they're on the field. Leave empty to rotate everywhere.</p>
+      <p class="hint">They'll play here more often, and other spots on the same line a bit more too, but still rotate so every kid gets turns at forward and defense. Leave empty to rotate evenly.</p>
       <div class="chips" id="pref-chips">${chips()}</div></div>
     <div class="dlg-actions">
       <button class="btn danger" type="button" data-d="remove" style="margin-right:auto">Remove from team</button>
