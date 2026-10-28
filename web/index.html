@@ -815,7 +815,7 @@ function normalize(s) {
       name: text(raw.name) || "Team",
       formation: FORMATIONS[raw.formation] ? raw.formation : "SIX_2_3",
       format: FORMATS[raw.format] ? raw.format : "QUARTERS",
-      director: text(raw.director, 200),
+      emailTo: text(raw.emailTo ?? raw.director, 500),
       players: (Array.isArray(raw.players) ? raw.players : []).filter((p) => p && typeof p === "object").map((p) => ({
         id: num(p.id) ?? newId(),
         name: text(p.name) || "Player",
@@ -1111,7 +1111,7 @@ function gameView(t, g) {
       <span class="played-note grow">${ICON.check} Played</span>
       <button class="btn" type="button" data-action="share">${ICON.share} Share</button>
     </div>
-    <button class="btn primary full" type="button" data-action="email-report">${ICON.mail} Email league director</button>`;
+    <button class="btn primary full" type="button" data-action="email-report">${ICON.mail} Email results</button>`;
   }
 
   if (!plan) {
@@ -1351,8 +1351,6 @@ function teamDialog(existing) {
   openDialog(`<h2>${existing ? "Edit team" : "New team"}</h2>
     <div class="group"><label class="lbl" for="team-name-input">Team name</label>
       <input class="field" id="team-name-input" value="${existing ? esc(existing.name) : ""}" placeholder="e.g. U8 Thunder" autocapitalize="words" autofocus></div>
-    <div class="group"><label class="lbl" for="team-director">League director's email <span class="hint">(optional, for game reports)</span></label>
-      <input class="field" type="email" id="team-director" value="${existing ? esc(existing.director || "") : ""}" placeholder="director@example.org" inputmode="email" autocomplete="email"></div>
     <div class="group"><span class="lbl">Players on the field</span>${radios("formation", FORMATIONS, f)}</div>
     <div class="group"><span class="lbl">Game</span>${radios("format", FORMATS, g)}</div>
     <div class="group"><span class="lbl">Positions</span>${Object.entries(STYLES).map(([k, v]) => `
@@ -1369,10 +1367,8 @@ function teamDialog(existing) {
       if (!name) { dlg.querySelector("#team-name-input").focus(); return; }
       const formation = dlg.querySelector('input[name="formation"]:checked').value;
       const format = dlg.querySelector('input[name="format"]:checked').value;
-      const director = dlg.querySelector("#team-director").value.trim();
       const style = dlg.querySelector('input[name="style"]:checked').value;
       if (existing) {
-        existing.director = director;
         existing.style = style;
         const keep = existing.formation === formation && existing.format === format;
         Object.assign(existing, { name, formation, format });
@@ -1382,7 +1378,6 @@ function teamDialog(existing) {
         }
       } else {
         const t = newTeam(name, formation, format);
-        t.director = director;
         t.style = style;
         state.teams.push(t);
         state.currentTeamId = t.id;
@@ -1547,28 +1542,31 @@ function emailDialog(t, g) {
   const d = reportData(t, g);
   const subject = reportSubject(d);
   const fileName = (d.title + " " + g.date).replace(/[^\w-]+/g, "-") + ".png";
-  const mailHref = (to, body) => "mailto:" + encodeURIComponent(to.trim()).replace(/%40/g, "@") +
+  // One or more addresses, separated by commas, semicolons or spaces.
+  const recipients = (v) => v.split(/[\s,;]+/).filter(Boolean).join(",");
+  const mailHref = (to, body) => "mailto:" + encodeURIComponent(recipients(to)).replace(/%40/g, "@").replace(/%2C/gi, ",") +
     "?subject=" + encodeURIComponent(subject) + (body ? "&body=" + encodeURIComponent(body) : "");
   const pictureBlob = () => new Promise((res) => reportCanvas(d).toBlob(res, "image/png"));
-  openDialog(`<h2>Email league director</h2>
+  openDialog(`<h2>Email results</h2>
     <div class="report-preview">${reportHTML(d)}</div>
-    <div class="group"><label class="lbl" for="director-email">League director's email</label>
-      <input class="field" type="email" id="director-email" value="${esc(t.director || "")}" placeholder="director@example.org" autocomplete="email" inputmode="email"></div>
+    <div class="group"><label class="lbl" for="email-to">Send to <span class="hint">(optional)</span></label>
+      <input class="field" type="text" id="email-to" value="${esc(t.emailTo || "")}" placeholder="e.g. parent@example.org, coach@example.org" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false">
+      <p class="hint">Add one or more addresses, separated by commas. They're saved for this team.</p></div>
     <div class="email-actions">
       <button class="btn primary" type="button" data-d="picture">${ICON.mail} Email picture</button>
       <button class="btn" type="button" data-d="table">${ICON.mail} Email table</button>
       <button class="btn" type="button" data-d="download">${ICON.download} Download picture</button>
     </div>
     <ul class="how">
-      <li><strong>Email picture:</strong> opens your share menu with the picture attached. Pick Gmail or Mail, then paste the director's address into To (it's already copied).</li>
-      <li><strong>Email table:</strong> opens an email to the director with the subject filled in. Long-press the message area and tap <strong>Paste</strong> to drop in the table.</li>
+      <li><strong>Email picture:</strong> opens your share menu with the picture attached. Pick Gmail or Mail. If you added addresses above, they're copied, so paste them into To.</li>
+      <li><strong>Email table:</strong> opens an email with the addresses and subject filled in. Long-press the message area and tap <strong>Paste</strong> to drop in the table.</li>
       <li><strong>Download picture:</strong> saves the picture to your phone to attach or print later.</li>
     </ul>
     <div id="picture-out" hidden></div>
     <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button></div>`, {
     picture: async () => {
-      saveDirector();
-      const to = input.value.trim();
+      saveRecipients();
+      const to = recipients(input.value).replace(/,/g, ", ");
       // Copy the address first, inside the tap, so it's ready to paste into To.
       let copied = false;
       if (to) { try { await navigator.clipboard.writeText(to); copied = true; } catch (e) {} }
@@ -1577,7 +1575,7 @@ function emailDialog(t, g) {
       if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
           await navigator.share({ files: [file], title: subject, text: subject });
-          if (copied) toast("Paste the director's address into To");
+          if (copied) toast("Addresses copied. Paste them into To");
           return;
         } catch (err) {
           if (err && err.name === "AbortError") return;
@@ -1586,7 +1584,7 @@ function emailDialog(t, g) {
       showPicture(blob, "This browser can't attach the picture for you. Press and hold the picture to save it, then open the email and attach it.", true);
     },
     table: async () => {
-      saveDirector();
+      saveRecipients();
       const plain = reportPlainTable(d);
       let copied = false;
       try {
@@ -1607,7 +1605,7 @@ function emailDialog(t, g) {
       window.location.href = mailHref(input.value, "");
     },
     download: async () => {
-      saveDirector();
+      saveRecipients();
       const blob = await pictureBlob();
       // Inside the claude.ai viewer, files are saved through its downloads prompt.
       const dl = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads") : null;
@@ -1626,19 +1624,19 @@ function emailDialog(t, g) {
       toast("Picture downloaded");
     },
   });
-  const input = dlg.querySelector("#director-email");
-  function saveDirector() {
-    const v = input.value.trim();
-    if (v !== (t.director || "")) { t.director = v; commit(); }
+  const input = dlg.querySelector("#email-to");
+  function saveRecipients() {
+    const v = recipients(input.value).replace(/,/g, ", ");
+    if (v !== (t.emailTo || "")) { t.emailTo = v; commit(); }
   }
   function showPicture(blob, note, withEmail) {
     const out = dlg.querySelector("#picture-out");
     out.hidden = false;
     out.innerHTML = `<p class="hint">${esc(note)}</p><img alt="Playing time table" src="${URL.createObjectURL(blob)}">
-      ${withEmail ? `<a class="btn full" href="${mailHref(input.value, "Playing time table attached.")}">${ICON.mail} Open email to ${esc(input.value.trim() || "the director")}</a>` : ""}`;
+      ${withEmail ? `<a class="btn full" href="${mailHref(input.value, "Playing time table attached.")}">${ICON.mail} Open email</a>` : ""}`;
     out.scrollIntoView({ block: "nearest" });
   }
-  input.addEventListener("change", saveDirector);
+  input.addEventListener("change", saveRecipients);
 }
 
 const APP_VERSION = "2026.10.28";

@@ -21,10 +21,10 @@ To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Andr
   between positions. Tap two players in a period to swap them. Share sends the lineup
   as text. Double-tap a player on the field to record a goal; remove a mistaken one from
   the game's Goals list.
-- **Game reports**: once a game is marked played, **Email league director** offers
-  **Email picture** (shares a picture of the playing-time table to your mail app),
-  **Email table** (copies the formatted table and opens an email to the director to paste it
-  into) and **Download picture**. The director's address is saved per team.
+- **Game results**: once a game is marked played, **Email results** offers **Email picture**
+  (shares a picture of the playing-time table to your mail app), **Email table** (copies the
+  formatted table and opens an email to paste it into) and **Download picture**. Addresses
+  (for parents, the league, anyone) are optional and saved per team.
 - **Season**: tap **Mark as played** after a game and future lineups give extra time to
   kids who've sat more, and spread goalie turns across the season. **Archive season**
   saves the totals and played games under **Past seasons** (with each game's lineup) and
