@@ -14,6 +14,13 @@ An Android app that builds fair playing-time lineups for youth soccer teams.
 - **Season**: tap **Save game** after a game and future lineups give extra time to kids
   who've sat more, and spread goalie turns across the season.
 
+## Web version
+
+`web/index.html` is the same app as a single web page, so it works in any phone's browser
+(including iPhone). It saves to the browser, or to your Claude account when opened from
+its claude.ai link. Its Teams menu has **Back up or move data** for copying everything to
+another phone.
+
 ## Build
 
 ```

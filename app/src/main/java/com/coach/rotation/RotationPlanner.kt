@@ -152,9 +152,8 @@ object RotationPlanner {
             // Field spots: each spot goes to whoever likes it, or has played it least.
             for (pos in onField.filter { it != Position.GK }.shuffled(random)) {
                 val pick = playing.minBy { p ->
-                    posCount.getOrDefault(p.id to pos, 0) * 10 +
-                        lineCount(posCount, p.id, pos.line) * 3 -
-                        if (pos in p.preferred) 25 else 0
+                    if (pos in p.preferred) -25
+                    else posCount.getOrDefault(p.id to pos, 0) * 10 + lineCount(posCount, p.id, pos.line) * 3
                 }
                 assignment[pos] = pick.id
                 posCount[pick.id to pos] = posCount.getOrDefault(pick.id to pos, 0) + 1
@@ -190,7 +189,7 @@ object RotationPlanner {
             // Sitting back-to-back periods.
             s.positions.zipWithNext().forEach { (a, b) -> if (a == null && b == null) score += 40 }
             // Time in a preferred spot is a plus.
-            score -= s.positions.count { it != null && it in player.preferred } * 15
+            score -= s.positions.count { it != null && it in player.preferred } * 40
             // Playing the exact same (non-preferred) spot again.
             s.positions.filterNotNull().filter { it !in player.preferred }.groupingBy { it }.eachCount().values
                 .forEach { if (it > 1) score += (it - 1) * 8 }

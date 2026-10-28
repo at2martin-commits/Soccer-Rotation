@@ -1,0 +1,1013 @@
+<title>Soccer Rotation</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f7a3f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: one narrow column like a clipboard; each period is drawn as a little pitch, forwards at the top. */
+:root {
+  --bg: #eef2ec;
+  --surface: #ffffff;
+  --ink: #18241c;
+  --muted: #5a6a5f;
+  --line: #d5ddd3;
+  --accent: #1f7a3f;
+  --accent-ink: #ffffff;
+  --pitch: #2e8a4d;
+  --pitch-stripe: #2a7f47;
+  --chalk: rgba(255, 255, 255, 0.55);
+  --chip: #ffffff;
+  --chip-ink: #18241c;
+  --bench: #e3e8e1;
+  --select: #f0b429;
+  --warn-bg: #fdf0d8;
+  --warn-ink: #6b4a00;
+  --danger: #b3261e;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --radius: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1410; --surface: #172019; --ink: #e5ede6; --muted: #98a89c; --line: #2a372e;
+    --accent: #4cc27a; --accent-ink: #062310; --pitch: #1d5a33; --pitch-stripe: #1a5330;
+    --chalk: rgba(255, 255, 255, 0.35); --chip: #f3f7f3; --chip-ink: #18241c; --bench: #222c25;
+    --select: #f0b429; --warn-bg: #3a2f14; --warn-ink: #f5d58a; --danger: #ff8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1410; --surface: #172019; --ink: #e5ede6; --muted: #98a89c; --line: #2a372e;
+  --accent: #4cc27a; --accent-ink: #062310; --pitch: #1d5a33; --pitch-stripe: #1a5330;
+  --chalk: rgba(255, 255, 255, 0.35); --chip: #f3f7f3; --chip-ink: #18241c; --bench: #222c25;
+  --select: #f0b429; --warn-bg: #3a2f14; --warn-ink: #f5d58a; --danger: #ff8a80;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+  z-index: 10; background: var(--surface);
+}
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--select); outline-offset: 2px; }
+
+.wrap {
+  max-width: 640px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* Header */
+header.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+header.top .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10px; }
+.team-btn {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  background: none; border: 0; padding: 4px 0; text-align: left;
+}
+.team-btn .names { min-width: 0; display: grid; }
+.team-btn .name {
+  font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.team-btn .sub { font-size: 0.85rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-btn .caret { flex: none; width: 22px; height: 22px; color: var(--muted); }
+.sync { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+
+main { padding-block: 16px 110px; display: grid; gap: 14px; }
+
+/* Bottom tabs */
+nav.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+nav.tabs .wrap { display: grid; grid-template-columns: repeat(3, 1fr); }
+nav.tabs button {
+  background: none; border: 0; padding: 10px 4px 12px; display: grid; justify-items: center; gap: 2px;
+  font-family: var(--font-display); font-weight: 600; font-size: 1rem; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted);
+}
+nav.tabs button svg { width: 22px; height: 22px; }
+nav.tabs button[aria-selected="true"] { color: var(--accent); }
+
+/* Shared bits */
+h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; margin: 0; line-height: 1.15; text-wrap: balance; }
+.hint { color: var(--muted); font-size: 0.9rem; margin: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 10px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 0 16px; border-radius: 10px; white-space: nowrap;
+  font-weight: 700; border: 1px solid var(--line); background: var(--surface);
+}
+.btn svg { width: 20px; height: 20px; flex: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.danger { color: var(--danger); border-color: transparent; background: none; padding: 0 4px; justify-content: flex-start; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-row { display: flex; gap: 8px; }
+.btn-row > .grow { flex: 1; }
+.full { width: 100%; }
+.warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius); padding: 12px 14px; font-weight: 600; }
+.empty { text-align: center; padding: 28px 16px; display: grid; gap: 12px; justify-items: center; }
+
+/* Players */
+.roster { display: grid; gap: 8px; }
+.player {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 6px 4px 4px;
+}
+.player.out .pname { color: var(--muted); text-decoration: line-through; }
+.here { display: grid; place-items: center; width: 44px; height: 44px; flex: none; }
+.here input { width: 22px; height: 22px; accent-color: var(--accent); margin: 0; }
+.pinfo { flex: 1; min-width: 0; background: none; border: 0; text-align: left; padding: 8px 4px; display: grid; }
+.pname { font-weight: 600; overflow-wrap: anywhere; }
+.pnotes { font-size: 0.85rem; color: var(--muted); }
+.icon-btn { width: 44px; height: 44px; border: 0; background: none; display: grid; place-items: center; color: var(--muted); flex: none; border-radius: 10px; }
+.icon-btn svg { width: 20px; height: 20px; }
+.add-row { display: flex; gap: 8px; }
+.field {
+  flex: 1; min-width: 0; min-height: 44px; padding: 8px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface);
+}
+.count { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; letter-spacing: 0.02em; }
+
+/* Lineup */
+.period { padding: 0; overflow: hidden; gap: 0; }
+.period-head { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 14px; }
+.period-head h2 { font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.pitch {
+  position: relative; padding: 14px 10px; display: grid; gap: 10px;
+  background: repeating-linear-gradient(180deg, var(--pitch) 0 36px, var(--pitch-stripe) 36px 72px);
+}
+.pitch::before {
+  /* halfway line and the top of the penalty box, in chalk */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(var(--chalk), var(--chalk)) center 0 / 100% 2px no-repeat,
+    linear-gradient(var(--chalk), var(--chalk)) center calc(100% - 44px) / 46% 2px no-repeat;
+}
+.prow { position: relative; display: flex; justify-content: center; gap: 8px; }
+.prow > .spot { flex: 0 1 calc((100% - 16px) / 3); }
+.spot {
+  min-width: 0; min-height: 54px; border-radius: 10px; border: 2px solid transparent;
+  background: var(--chip); color: var(--chip-ink); padding: 4px 6px;
+  display: grid; align-content: center; justify-items: center; gap: 0;
+}
+.spot .pos { font-family: var(--font-display); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.06em; color: #4f6155; }
+.spot .who { font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spot.empty-spot .who { color: #8a968d; }
+.spot.sel { border-color: var(--select); box-shadow: 0 0 0 3px color-mix(in srgb, var(--select) 45%, transparent); }
+.bench { background: var(--bench); padding: 10px; display: grid; gap: 8px; }
+.bench .label { font-family: var(--font-display); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.bench .prow { justify-content: flex-start; flex-wrap: wrap; }
+.bench .spot { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.bench .spot.sel { border-color: var(--select); }
+.bench .spot .pos { color: var(--muted); }
+
+.timeline { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.timeline td { padding: 6px 0; border-top: 1px solid var(--line); vertical-align: middle; }
+.timeline tr:first-child td { border-top: 0; }
+.timeline .nm { overflow-wrap: anywhere; padding-right: 8px; }
+.timeline .seq { white-space: nowrap; text-align: right; }
+.tag {
+  display: inline-block; min-width: 2.1em; padding: 1px 4px; margin-left: 3px; border-radius: 6px; text-align: center;
+  font-family: var(--font-display); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.03em;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--ink);
+}
+.tag.sat { background: none; color: var(--muted); }
+.timeline .tot { width: 3.2em; text-align: right; font-weight: 700; }
+
+/* Season */
+.table-wrap { overflow-x: auto; }
+.season { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.season th, .season td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); }
+.season th { font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.season th:first-child, .season td:first-child { text-align: left; padding-left: 0; }
+
+/* Dialogs */
+dialog {
+  border: 0; border-radius: 16px; padding: 0; width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px); background: var(--surface); color: var(--ink);
+}
+dialog::backdrop { background: rgba(8, 14, 10, 0.55); }
+.dlg { display: grid; gap: 14px; padding: 18px; }
+.dlg h2 { font-size: 1.4rem; }
+.dlg label.lbl { font-weight: 700; font-size: 0.9rem; }
+.dlg .group { display: grid; gap: 6px; }
+.choice { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.choice input { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; flex: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-toggle {
+  min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 600;
+}
+.chip-toggle[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.chip-toggle:disabled { opacity: 0.4; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.switch-row input { width: 22px; height: 22px; accent-color: var(--accent); }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.team-list { display: grid; gap: 6px; }
+.team-pick {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); text-align: left;
+}
+.team-pick[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.team-pick small { color: var(--muted); display: block; }
+textarea.field { width: 100%; min-height: 120px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.8rem; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-weight: 600; z-index: 20;
+  max-width: calc(100vw - 32px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .spot { transition: border-color 0.12s, box-shadow 0.12s; }
+}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <button class="team-btn" id="team-btn" type="button" aria-haspopup="dialog">
+      <span class="names"><span class="name" id="team-name">Soccer Rotation</span><span class="sub" id="team-sub">Fair playing time, every game</span></span>
+      <svg class="caret" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
+    </button>
+    <span class="sync" id="sync" hidden></span>
+  </div>
+</header>
+
+<main class="wrap" id="main" aria-live="polite"></main>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="wrap" role="tablist">
+    <button type="button" role="tab" data-tab="players" id="tab-players">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.3 0-8 1.7-8 5v1h16v-1c0-3.3-4.7-5-8-5z"/></svg>
+      Players
+    </button>
+    <button type="button" role="tab" data-tab="lineup" id="tab-lineup">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M4 12h16"/><circle cx="12" cy="12" r="2.5"/></svg>
+      Lineup
+    </button>
+    <button type="button" role="tab" data-tab="season" id="tab-season">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="1.5"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
+      Season
+    </button>
+  </div>
+</nav>
+
+<dialog id="dlg"></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+// ------------------------------------------------------------------ Soccer data
+
+const POS = {
+  GK: { label: "Goalie", short: "G", line: "GOAL" },
+  LD: { label: "Left Defense", short: "LD", line: "DEFENSE" },
+  CD: { label: "Center Defense", short: "CD", line: "DEFENSE" },
+  RD: { label: "Right Defense", short: "RD", line: "DEFENSE" },
+  LM: { label: "Left Mid", short: "LM", line: "MIDFIELD" },
+  CM: { label: "Center Mid", short: "CM", line: "MIDFIELD" },
+  RM: { label: "Right Mid", short: "RM", line: "MIDFIELD" },
+  LF: { label: "Left Forward", short: "LF", line: "FORWARD" },
+  CF: { label: "Center Forward", short: "CF", line: "FORWARD" },
+  RF: { label: "Right Forward", short: "RF", line: "FORWARD" },
+};
+const POS_ORDER = Object.keys(POS);
+
+// `fill` is the order spots are filled when not enough kids show up; the last ones are left empty first.
+const FORMATIONS = {
+  SIX_2_3: { label: "6v6: 2 defense, 3 forward", fill: ["GK", "LD", "RD", "CF", "LF", "RF"] },
+  SEVEN_2_3_1: { label: "7v7: 2 defense, 3 mid, 1 forward", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM"] },
+  NINE_3_3_2: { label: "9v9: 3 defense, 3 mid, 2 forward", fill: ["GK", "CD", "LD", "RD", "CM", "LF", "RF", "LM", "RM"] },
+  NINE_3_2_3: { label: "9v9: 3 defense, 2 mid, 3 forward", fill: ["GK", "CD", "LD", "RD", "LM", "RM", "CF", "LF", "RF"] },
+  NINE_2_3_3: { label: "9v9: 2 defense, 3 mid, 3 forward", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM", "LF", "RF"] },
+};
+const formationPositions = (f) => POS_ORDER.filter((k) => FORMATIONS[f].fill.includes(k));
+
+const FORMATS = {
+  QUARTERS: { label: "4 quarters", periods: 4, unit: "quarters" },
+  HALVES: { label: "2 halves", periods: 2, unit: "halves" },
+  HALVES_SPLIT: { label: "2 halves, swap mid-half", periods: 4, unit: "segments" },
+};
+function periodName(format, i) {
+  if (format === "QUARTERS") return "Quarter " + (i + 1);
+  if (format === "HALVES") return i === 0 ? "1st half" : "2nd half";
+  return (i < 2 ? "1st half" : "2nd half") + (i % 2 === 0 ? " – start" : " – mid");
+}
+
+// ------------------------------------------------------------------ Lineup planner
+
+const ATTEMPTS = 400;
+const shuffle = (a) => {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+const byKeys = (...keys) => (a, b) => {
+  for (const k of keys) {
+    const d = k(a) - k(b);
+    if (d) return d;
+  }
+  return 0;
+};
+
+/**
+ * Builds every period of a game. Bench time is always spread as evenly as possible; among
+ * many random candidates, the one with the best goalie spread, position variety and
+ * preferred positions wins. Ties go against kids who have sat least this season.
+ */
+function generate(players, formation, periods, season) {
+  if (!players.length) return Array.from({ length: periods }, () => ({ positions: {}, bench: [] }));
+  let best = null, bestScore = Infinity;
+  for (let i = 0; i < ATTEMPTS; i++) {
+    const plan = candidate(players, FORMATIONS[formation].fill, periods, season);
+    const s = score(plan, players, season);
+    if (s < bestScore) { best = plan; bestScore = s; }
+  }
+  return best;
+}
+
+function candidate(players, fill, periods, season) {
+  const onField = fill.slice(0, Math.min(fill.length, players.length));
+  const benchSize = players.length - onField.length;
+  const sits = {}, gk = {};
+  players.forEach((p) => { sits[p.id] = 0; gk[p.id] = 0; });
+  const posCount = new Map();
+  const count = (id, pos) => posCount.get(id + "|" + pos) || 0;
+  const lineCount = (id, line) => POS_ORDER.reduce((s, k) => s + (POS[k].line === line ? count(id, k) : 0), 0);
+  const seasonOf = (p) => season[p.id] || {};
+  let lastBench = new Set(), lastGoalie = null;
+  const out = [];
+
+  for (let q = 0; q < periods; q++) {
+    // Bench: fewest sits this game, then not twice in a row, then fewest sits this season.
+    const bench = shuffle(players.slice())
+      .sort(byKeys((p) => sits[p.id], (p) => (lastBench.has(p.id) ? 1 : 0), (p) => seasonOf(p).sat || 0))
+      .slice(0, benchSize)
+      .map((p) => p.id);
+    bench.forEach((id) => sits[id]++);
+    const benchSet = new Set(bench);
+    let playing = shuffle(players.filter((p) => !benchSet.has(p.id)));
+    const positions = {};
+
+    // Goalie: eligible kids with the fewest goalie turns, kids who like goal first, not the last goalie.
+    const goalie = playing.slice().sort(byKeys(
+      (p) => (p.goalie ? 0 : 1),
+      (p) => gk[p.id] * 2 - (p.preferred.includes("GK") ? 1 : 0),
+      (p) => (p.id === lastGoalie ? 1 : 0),
+      (p) => seasonOf(p).goalie || 0,
+    ))[0];
+    positions.GK = goalie.id;
+    gk[goalie.id]++;
+    playing = playing.filter((p) => p !== goalie);
+    lastGoalie = goalie.id;
+
+    // Field spots: each goes to whoever likes it, or has played it least.
+    for (const pos of shuffle(onField.filter((k) => k !== "GK"))) {
+      let pick = null, cost = Infinity;
+      for (const p of playing) {
+        const c = p.preferred.includes(pos) ? -25 : count(p.id, pos) * 10 + lineCount(p.id, POS[pos].line) * 3;
+        if (c < cost) { cost = c; pick = p; }
+      }
+      positions[pos] = pick.id;
+      posCount.set(pick.id + "|" + pos, count(pick.id, pos) + 1);
+      playing = playing.filter((p) => p !== pick);
+    }
+    lastBench = benchSet;
+    out.push({ positions, bench });
+  }
+  return out;
+}
+
+/** Lower is better. */
+function score(plan, players, season) {
+  const sums = summarize(plan, players);
+  let s = 0;
+  const sat = sums.map((x) => x.sat);
+  if (sat.length) s += (Math.max(...sat) - Math.min(...sat)) * 1000;
+  const eligible = players.filter((p) => p.goalie);
+  const fewestSeasonGoalie = eligible.length ? Math.min(...eligible.map((p) => (season[p.id] || {}).goalie || 0)) : 0;
+  sums.forEach((x, i) => {
+    const p = players[i];
+    const likesGoal = p.preferred.includes("GK");
+    const gk = x.positions.filter((k) => k === "GK").length;
+    if (gk > 0 && !p.goalie && eligible.length) s += 500 * gk;
+    if (gk > 1 && !likesGoal) s += (gk - 1) * (gk - 1) * 60;
+    if (!likesGoal) s += gk * (((season[p.id] || {}).goalie || 0) - fewestSeasonGoalie) * 30;
+    for (let j = 1; j < x.positions.length; j++) if (!x.positions[j] && !x.positions[j - 1]) s += 40;
+    s -= x.positions.filter((k) => k && p.preferred.includes(k)).length * 40;
+    const repeats = {};
+    x.positions.filter((k) => k && !p.preferred.includes(k)).forEach((k) => { repeats[k] = (repeats[k] || 0) + 1; });
+    Object.values(repeats).forEach((n) => { if (n > 1) s += (n - 1) * 8; });
+    const lines = x.positions.filter((k) => k && k !== "GK").map((k) => POS[k].line);
+    if (!p.preferred.length && lines.length >= 2 && new Set(lines).size === 1) s += 5;
+  });
+  return s;
+}
+
+function summarize(plan, players) {
+  return players.map((p) => {
+    const positions = plan.map((q) => Object.keys(q.positions).find((k) => q.positions[k] === p.id) || null);
+    const played = positions.filter(Boolean).length;
+    return { id: p.id, positions, played, sat: positions.length - played };
+  });
+}
+
+function record(plan, players, season) {
+  const next = { ...season };
+  summarize(plan, players).forEach((x) => {
+    const t = next[x.id] || { played: 0, sat: 0, goalie: 0, games: 0 };
+    next[x.id] = {
+      played: t.played + x.played,
+      sat: t.sat + x.sat,
+      goalie: t.goalie + x.positions.filter((k) => k === "GK").length,
+      games: t.games + 1,
+    };
+  });
+  return next;
+}
+
+// A slot is "F:LD" (a field position) or "B:0" (a bench seat).
+function playerAt(period, slot) {
+  const [kind, key] = slot.split(":");
+  return kind === "F" ? period.positions[key] ?? null : period.bench[Number(key)] ?? null;
+}
+function swap(plan, qi, a, b) {
+  const q = plan[qi];
+  const pa = playerAt(q, a), pb = playerAt(q, b);
+  const positions = { ...q.positions }, bench = q.bench.slice();
+  const put = (slot, id) => {
+    const [kind, key] = slot.split(":");
+    if (kind === "F") { if (id == null) delete positions[key]; else positions[key] = id; }
+    else if (id != null) bench[Number(key)] = id;
+  };
+  put(a, pb); put(b, pa);
+  return plan.map((x, i) => (i === qi ? { positions, bench } : x));
+}
+
+function lineupText(team) {
+  const players = planPlayers(team);
+  const names = Object.fromEntries(players.map((p) => [p.id, p.name]));
+  const date = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const lines = [team.name + " – " + date];
+  team.plan.forEach((q, i) => {
+    lines.push("", periodName(team.format, i));
+    POS_ORDER.forEach((k) => { if (q.positions[k] != null) lines.push("  " + POS[k].short + ": " + names[q.positions[k]]); });
+    if (q.bench.length) lines.push("  Sits: " + q.bench.map((id) => names[id]).join(", "));
+  });
+  lines.push("", "Playing time (" + FORMATS[team.format].unit + ")");
+  summarize(team.plan, players).forEach((x) => lines.push("  " + names[x.id] + ": " + x.played + "/" + team.plan.length));
+  return lines.join("\n");
+}
+
+// ------------------------------------------------------------------ State and saving
+
+const LOCAL_KEY = "soccer-rotation";
+let state = normalize(readLocal()) || { version: 2, nextId: 1, currentTeamId: null, teams: [], savedAt: 0 };
+let ui = { tab: state.teams.length ? "lineup" : "players", selected: null };
+let cloudRef = null, cloudTimer = null, cloudBusy = false, cloudPending = false;
+
+function readLocal() {
+  try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "null"); } catch (e) { return null; }
+}
+function normalize(s) {
+  if (!s || !Array.isArray(s.teams)) return null;
+  s.teams.forEach((t) => {
+    t.players = (t.players || []).map((p) => ({ id: p.id, name: p.name, goalie: p.goalie !== false, preferred: p.preferred || [] }));
+    t.absent = t.absent || [];
+    t.season = t.season || {};
+    t.formation = FORMATIONS[t.formation] ? t.formation : "SIX_2_3";
+    t.format = FORMATS[t.format] ? t.format : "QUARTERS";
+    t.plan = t.plan || null;
+  });
+  s.nextId = s.nextId || 1;
+  s.savedAt = s.savedAt || 0;
+  return s;
+}
+function commit() {
+  state.savedAt = Date.now();
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(state)); } catch (e) { /* storage blocked: keep going in memory */ }
+  if (cloudRef) {
+    clearTimeout(cloudTimer);
+    cloudTimer = setTimeout(pushCloud, 700);
+  }
+  render();
+}
+async function pushCloud() {
+  if (cloudBusy) { cloudPending = true; return; }
+  cloudBusy = true;
+  try {
+    await cloudRef.set({ json: JSON.stringify(state) });
+    setSync("Saved to your account");
+  } catch (e) {
+    setSync("Saved on this device");
+  } finally {
+    cloudBusy = false;
+    if (cloudPending) { cloudPending = false; pushCloud(); }
+  }
+}
+function setSync(text) {
+  const el = document.getElementById("sync");
+  el.textContent = text;
+  el.hidden = !text;
+}
+
+// When opened from the claude.ai link, keep a private copy in the viewer's account so it follows them across devices.
+async function initCloud() {
+  if (!window.claude || typeof window.claude.use !== "function") return;
+  try {
+    const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    if (!db || !user) return;
+    const uid = await user.id();
+    if (!uid) return;
+    const ref = db.doc("data/users/" + uid + "/state");
+    const snap = await ref.get();
+    cloudRef = ref;
+    const remote = snap.exists ? normalize(JSON.parse(snap.data().json || "null")) : null;
+    if (remote && remote.savedAt >= state.savedAt) {
+      state = remote;
+      try { localStorage.setItem(LOCAL_KEY, JSON.stringify(state)); } catch (e) {}
+      if (!state.teams.length) ui.tab = "players";
+      render();
+      setSync("Saved to your account");
+    } else if (state.teams.length) {
+      pushCloud();
+    } else {
+      setSync("Saved to your account");
+    }
+  } catch (e) {
+    cloudRef = null;
+  }
+}
+
+const team = () => state.teams.find((t) => t.id === state.currentTeamId) || state.teams[0] || null;
+const present = (t) => t.players.filter((p) => !t.absent.includes(p.id));
+function planPlayers(t) {
+  if (!t.plan || !t.plan.length) return [];
+  const ids = new Set([...Object.values(t.plan[0].positions), ...t.plan[0].bench]);
+  return t.players.filter((p) => ids.has(p.id));
+}
+function sameIds(a, b) {
+  return a.length === b.length && a.every((p) => b.some((q) => q.id === p.id));
+}
+
+// ------------------------------------------------------------------ Rendering
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ICON = {
+  edit: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a3.3 3.3 0 0 0 0-1.39l7.05-4.11A3 3 0 1 0 15 5c0 .24.04.47.09.7L8.04 9.81a3 3 0 1 0 0 4.38l7.12 4.16c-.05.21-.08.43-.08.65A2.92 2.92 0 1 0 18 16.08z"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
+};
+
+function render() {
+  const t = team();
+  document.getElementById("team-name").textContent = t ? t.name : "Soccer Rotation";
+  document.getElementById("team-sub").textContent = t
+    ? FORMATIONS[t.formation].label + " · " + FORMATS[t.format].label
+    : "Fair playing time, every game";
+  document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === ui.tab)));
+  const main = document.getElementById("main");
+  if (!t) {
+    main.innerHTML = `
+      <div class="panel empty">
+        <h2>Set up your first team</h2>
+        <p class="hint">Add your players, check off who showed up, and get a lineup where every kid gets fair time on the field.</p>
+        <button class="btn primary" type="button" data-action="new-team">${ICON.plus} Create a team</button>
+        <button class="btn" type="button" data-action="sample-team">Try it with sample names</button>
+      </div>`;
+    return;
+  }
+  if (ui.tab === "players") main.innerHTML = playersView(t);
+  else if (ui.tab === "lineup") main.innerHTML = lineupView(t);
+  else main.innerHTML = seasonView(t);
+}
+
+function playersView(t) {
+  const rows = t.players.map((p) => {
+    const here = !t.absent.includes(p.id);
+    const likes = POS_ORDER.filter((k) => p.preferred.includes(k) && FORMATIONS[t.formation].fill.includes(k)).map((k) => POS[k].short);
+    const notes = [likes.length ? "Likes " + likes.join(", ") : "", p.goalie ? "" : "No goalie"].filter(Boolean).join(" · ");
+    return `
+      <div class="player${here ? "" : " out"}">
+        <label class="here"><input type="checkbox" id="here-${p.id}" data-action="toggle-here" data-id="${p.id}" ${here ? "checked" : ""} aria-label="${esc(p.name)} is here"></label>
+        <button class="pinfo" type="button" data-action="edit-player" data-id="${p.id}">
+          <span class="pname">${esc(p.name)}</span>
+          ${notes ? `<span class="pnotes">${esc(notes)}</span>` : ""}
+        </button>
+        <button class="icon-btn" type="button" data-action="edit-player" data-id="${p.id}" aria-label="Edit ${esc(p.name)}">${ICON.edit}</button>
+      </div>`;
+  }).join("");
+  return `
+    <div class="panel">
+      <div><span class="count">${present(t).length} of ${t.players.length} here today</span></div>
+      <p class="hint">Uncheck kids who are absent. Tap a name to rename them, set preferred positions, or turn off goalie.</p>
+    </div>
+    <div class="roster">${rows}</div>
+    <form class="add-row" data-form="add-player">
+      <input class="field" id="add-name" name="name" placeholder="Add a player" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="New player name">
+      <button class="btn primary" type="submit" aria-label="Add player">${ICON.plus} Add</button>
+    </form>`;
+}
+
+function lineupView(t) {
+  const plan = t.plan;
+  const here = present(t);
+  const changed = plan && !sameIds(planPlayers(t), here);
+  let html = `
+    <div class="btn-row">
+      <button class="btn primary grow" type="button" data-action="make-lineup" ${here.length ? "" : "disabled"}>${ICON.refresh} ${plan ? "New lineup" : "Make lineup"}</button>
+      ${plan ? `<button class="btn" type="button" data-action="share">${ICON.share} Share</button>` : ""}
+    </div>`;
+  if (plan) {
+    html += `<button class="btn full" type="button" data-action="save-game" ${t.planSaved || changed ? "disabled" : ""}>${ICON.check} ${t.planSaved ? "Game saved to season" : "Save game"}</button>`;
+  }
+  if (!plan) {
+    return html + `<p class="hint">${t.players.length ? here.length + " players here. Tap Make lineup to build the game." : "Add your players on the Players tab first."}</p>`;
+  }
+  if (changed) html += `<div class="warn">Attendance changed since this lineup was made. Tap New lineup to include the right kids.</div>`;
+  html += `<p class="hint">Tap two players in the same box to swap them. ★ marks a preferred spot.</p>`;
+
+  const byId = Object.fromEntries(t.players.map((p) => [p.id, p]));
+  plan.forEach((q, qi) => {
+    const sel = ui.selected && ui.selected.qi === qi ? ui.selected.slot : null;
+    const spot = (slot, label) => {
+      const id = playerAt(q, slot);
+      const p = id != null ? byId[id] : null;
+      const liked = p && slot.startsWith("F:") && p.preferred.includes(slot.slice(2));
+      return `<button type="button" class="spot${sel === slot ? " sel" : ""}${p ? "" : " empty-spot"}" data-action="spot" data-qi="${qi}" data-slot="${slot}" aria-pressed="${sel === slot}">
+        <span class="pos">${label}${liked ? " ★" : ""}</span><span class="who">${p ? esc(p.name) : "—"}</span></button>`;
+    };
+    const rows = ["FORWARD", "MIDFIELD", "DEFENSE", "GOAL"]
+      .map((line) => formationPositions(t.formation).filter((k) => POS[k].line === line && q.positions[k] != null))
+      .filter((r) => r.length)
+      .map((r) => `<div class="prow">${r.map((k) => spot("F:" + k, POS[k].short)).join("")}</div>`)
+      .join("");
+    const bench = q.bench.length
+      ? `<div class="bench"><span class="label">Sitting</span><div class="prow">${q.bench.map((_, i) => spot("B:" + i, "SITS")).join("")}</div></div>`
+      : "";
+    html += `<section class="panel period" aria-label="${esc(periodName(t.format, qi))}">
+      <div class="period-head"><h2>${esc(periodName(t.format, qi))}</h2></div>
+      <div class="pitch">${rows}</div>${bench}</section>`;
+  });
+
+  const players = planPlayers(t);
+  const rows = summarize(plan, players).map((x, i) => `
+    <tr><td class="nm">${esc(players[i].name)}</td>
+    <td class="seq">${x.positions.map((k) => (k ? `<span class="tag">${POS[k].short}</span>` : `<span class="tag sat">–</span>`)).join("")}</td>
+    <td class="tot">${x.played}/${plan.length}</td></tr>`).join("");
+  html += `<section class="panel"><h2>Playing time</h2><p class="hint">Positions by ${FORMATS[t.format].unit === "halves" ? "half" : FORMATS[t.format].unit === "quarters" ? "quarter" : "segment"}, and ${FORMATS[t.format].unit} played.</p>
+    <table class="timeline"><tbody>${rows}</tbody></table></section>`;
+  return html;
+}
+
+function seasonView(t) {
+  const rows = t.players.map((p) => {
+    const s = t.season[p.id] || { games: 0, played: 0, sat: 0, goalie: 0 };
+    return `<tr><td>${esc(p.name)}</td><td>${s.games}</td><td>${s.played}</td><td>${s.sat}</td><td>${s.goalie}</td></tr>`;
+  }).join("");
+  return `
+    <div class="panel">
+      <h2>Season totals</h2>
+      <p class="hint">From games you saved for ${esc(t.name)}. New lineups give extra time to kids who've sat more, and spread goalie turns. Played and Sat count ${FORMATS[t.format].unit}.</p>
+      <div class="table-wrap"><table class="season">
+        <thead><tr><th>Player</th><th>Games</th><th>Played</th><th>Sat</th><th>Goalie</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="5">No players yet.</td></tr>`}</tbody>
+      </table></div>
+    </div>
+    <button class="btn" type="button" data-action="reset-season" ${Object.keys(t.season).length ? "" : "disabled"}>Reset season</button>`;
+}
+
+// ------------------------------------------------------------------ Dialogs
+
+const dlg = document.getElementById("dlg");
+let dlgHandlers = {};
+function openDialog(html, handlers) {
+  dlg.innerHTML = `<div class="dlg">${html}</div>`;
+  dlgHandlers = handlers || {};
+  if (!dlg.open) dlg.showModal();
+  const first = dlg.querySelector("[autofocus]");
+  if (first) first.focus();
+}
+function closeDialog() { if (dlg.open) dlg.close(); }
+dlg.addEventListener("click", (e) => {
+  if (e.target === dlg) return closeDialog(); // tap on the backdrop
+  const b = e.target.closest("[data-d]");
+  if (!b) return;
+  const fn = dlgHandlers[b.dataset.d];
+  if (b.dataset.d === "cancel") closeDialog();
+  else if (fn) fn(b);
+});
+
+function confirmDialog(title, text, okLabel, onOk) {
+  openDialog(`<h2>${esc(title)}</h2><p class="hint">${esc(text)}</p>
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+    <button class="btn primary" type="button" data-d="ok">${esc(okLabel)}</button></div>`,
+    { ok: () => { closeDialog(); onOk(); } });
+}
+
+function teamMenu() {
+  const t = team();
+  const list = state.teams.map((x) => `
+    <button class="team-pick" type="button" data-d="pick" data-id="${x.id}" aria-current="${t && x.id === t.id}">
+      <span><strong>${esc(x.name)}</strong><small>${esc(FORMATIONS[x.formation].label)} · ${esc(FORMATS[x.format].label)}</small></span>
+      ${t && x.id === t.id ? ICON.check.replace("<svg", '<svg width="20" height="20"') : ""}
+    </button>`).join("");
+  openDialog(`<h2>Teams</h2>
+    <div class="team-list">${list}</div>
+    <div class="dlg-actions">
+      <button class="btn" type="button" data-d="backup">Back up or move data</button>
+      ${t ? `<button class="btn" type="button" data-d="edit">${ICON.edit} Edit this team</button>` : ""}
+      <button class="btn primary" type="button" data-d="new">${ICON.plus} New team</button>
+    </div>`, {
+    pick: (b) => { state.currentTeamId = Number(b.dataset.id); ui.selected = null; closeDialog(); commit(); },
+    edit: () => teamDialog(team()),
+    new: () => teamDialog(null),
+    backup: backupDialog,
+  });
+}
+
+function teamDialog(existing) {
+  const f = existing ? existing.formation : "SIX_2_3";
+  const g = existing ? existing.format : "QUARTERS";
+  const radios = (name, opts, cur) => Object.entries(opts).map(([k, v]) => `
+    <label class="choice"><input type="radio" name="${name}" id="${name}-${k}" value="${k}" ${k === cur ? "checked" : ""}> ${esc(v.label)}</label>`).join("");
+  openDialog(`<h2>${existing ? "Edit team" : "New team"}</h2>
+    <div class="group"><label class="lbl" for="team-name-input">Team name</label>
+      <input class="field" id="team-name-input" value="${existing ? esc(existing.name) : ""}" placeholder="e.g. U8 Thunder" autocapitalize="words" autofocus></div>
+    <div class="group"><span class="lbl">Players on the field</span>${radios("formation", FORMATIONS, f)}</div>
+    <div class="group"><span class="lbl">Game</span>${radios("format", FORMATS, g)}</div>
+    ${existing && existing.plan ? `<p class="hint">Changing the formation or game clears the current lineup.</p>` : ""}
+    <div class="dlg-actions">
+      ${existing ? `<button class="btn danger" type="button" data-d="delete" style="margin-right:auto">Delete team</button>` : ""}
+      <button class="btn" type="button" data-d="cancel">Cancel</button>
+      <button class="btn primary" type="button" data-d="save">Save</button>
+    </div>`, {
+    save: () => {
+      const name = dlg.querySelector("#team-name-input").value.trim();
+      if (!name) { dlg.querySelector("#team-name-input").focus(); return; }
+      const formation = dlg.querySelector('input[name="formation"]:checked').value;
+      const format = dlg.querySelector('input[name="format"]:checked').value;
+      if (existing) {
+        const keep = existing.formation === formation && existing.format === format;
+        Object.assign(existing, { name, formation, format });
+        if (!keep) { existing.plan = null; existing.planSaved = false; ui.selected = null; }
+      } else {
+        const t = { id: state.nextId++, name, formation, format, players: [], absent: [], plan: null, planSaved: false, season: {} };
+        state.teams.push(t);
+        state.currentTeamId = t.id;
+        ui.tab = "players";
+      }
+      closeDialog();
+      commit();
+    },
+    delete: (b) => {
+      if (b.dataset.armed) {
+        state.teams = state.teams.filter((x) => x.id !== existing.id);
+        state.currentTeamId = state.teams[0] ? state.teams[0].id : null;
+        closeDialog();
+        commit();
+      } else {
+        b.dataset.armed = "1";
+        b.textContent = "Tap again to delete " + existing.name;
+      }
+    },
+  });
+}
+
+function playerDialog(t, p) {
+  let preferred = p.preferred.slice();
+  const chips = () => formationPositions(t.formation).map((k) => `
+    <button type="button" class="chip-toggle" data-d="pref" data-pos="${k}" aria-pressed="${preferred.includes(k)}">${POS[k].label}</button>`).join("");
+  openDialog(`<h2>Edit player</h2>
+    <div class="group"><label class="lbl" for="player-name-input">Name</label>
+      <input class="field" id="player-name-input" value="${esc(p.name)}" autocapitalize="words"></div>
+    <label class="switch-row" for="player-goalie"><span>Can play goalie</span><input type="checkbox" id="player-goalie" ${p.goalie ? "checked" : ""}></label>
+    <div class="group"><span class="lbl">Preferred positions</span>
+      <p class="hint">The lineup puts them here whenever they're on the field. Leave empty to rotate everywhere.</p>
+      <div class="chips" id="pref-chips">${chips()}</div></div>
+    <div class="dlg-actions">
+      <button class="btn danger" type="button" data-d="remove" style="margin-right:auto">Remove from team</button>
+      <button class="btn" type="button" data-d="cancel">Cancel</button>
+      <button class="btn primary" type="button" data-d="save">Save</button>
+    </div>`, {
+    pref: (b) => {
+      const k = b.dataset.pos;
+      if (k === "GK" && !dlg.querySelector("#player-goalie").checked) return;
+      preferred = preferred.includes(k) ? preferred.filter((x) => x !== k) : [...preferred, k];
+      b.setAttribute("aria-pressed", String(preferred.includes(k)));
+    },
+    save: () => {
+      const name = dlg.querySelector("#player-name-input").value.trim();
+      if (!name) { dlg.querySelector("#player-name-input").focus(); return; }
+      p.name = name;
+      p.goalie = dlg.querySelector("#player-goalie").checked;
+      p.preferred = p.goalie ? preferred : preferred.filter((k) => k !== "GK");
+      closeDialog();
+      commit();
+    },
+    remove: (b) => {
+      if (b.dataset.armed) {
+        t.players = t.players.filter((x) => x.id !== p.id);
+        t.absent = t.absent.filter((id) => id !== p.id);
+        delete t.season[p.id];
+        closeDialog();
+        commit();
+      } else {
+        b.dataset.armed = "1";
+        b.textContent = "Tap again to remove " + p.name;
+      }
+    },
+  });
+  const goalieBox = dlg.querySelector("#player-goalie");
+  const syncGoalieChip = () => {
+    const chip = dlg.querySelector('[data-pos="GK"]');
+    if (!chip) return;
+    chip.disabled = !goalieBox.checked;
+    if (!goalieBox.checked) { preferred = preferred.filter((k) => k !== "GK"); chip.setAttribute("aria-pressed", "false"); }
+  };
+  goalieBox.addEventListener("change", syncGoalieChip);
+  syncGoalieChip();
+}
+
+function textDialog(title, text) {
+  openDialog(`<h2>${esc(title)}</h2>
+    <textarea class="field" id="share-text" readonly rows="12">${esc(text)}</textarea>
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button>
+    <button class="btn primary" type="button" data-d="copy">Copy</button></div>`, {
+    copy: () => copyText(dlg.querySelector("#share-text")),
+  });
+}
+
+function backupDialog() {
+  openDialog(`<h2>Back up or move data</h2>
+    <p class="hint">Copy this text and keep it somewhere safe, or paste it into the app on another phone.</p>
+    <textarea class="field" id="backup-out" readonly>${esc(JSON.stringify(state))}</textarea>
+    <button class="btn" type="button" data-d="copy">Copy backup</button>
+    <div class="group"><label class="lbl" for="backup-in">Restore from a backup</label>
+      <textarea class="field" id="backup-in" placeholder="Paste backup text here"></textarea></div>
+    <p class="hint" id="restore-msg" hidden></p>
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button>
+    <button class="btn primary" type="button" data-d="restore">Replace my data</button></div>`, {
+    copy: () => copyText(dlg.querySelector("#backup-out")),
+    restore: () => {
+      const msg = dlg.querySelector("#restore-msg");
+      let parsed = null;
+      try { parsed = normalize(JSON.parse(dlg.querySelector("#backup-in").value)); } catch (e) {}
+      if (!parsed) {
+        msg.hidden = false;
+        msg.textContent = "That text isn't a Soccer Rotation backup. Copy the whole backup and try again.";
+        return;
+      }
+      state = parsed;
+      ui = { tab: "lineup", selected: null };
+      closeDialog();
+      commit();
+      toast("Backup restored");
+    },
+  });
+}
+
+async function copyText(textarea) {
+  try {
+    await navigator.clipboard.writeText(textarea.value);
+    toast("Copied");
+  } catch (e) {
+    textarea.focus();
+    textarea.select();
+    toast("Selected. Use your phone's Copy.");
+  }
+}
+
+let toastTimer = null;
+function toast(text) {
+  const el = document.getElementById("toast");
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2200);
+}
+
+// ------------------------------------------------------------------ Actions
+
+const SAMPLE_NAMES = ["Ava", "Bella", "Chloe", "Dani", "Emma", "Faith", "Grace", "Hana"];
+
+document.getElementById("team-btn").addEventListener("click", () => (state.teams.length ? teamMenu() : teamDialog(null)));
+document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
+  ui.tab = b.dataset.tab;
+  ui.selected = null;
+  render();
+  window.scrollTo(0, 0);
+}));
+
+document.getElementById("main").addEventListener("submit", (e) => {
+  if (e.target.dataset.form !== "add-player") return;
+  e.preventDefault();
+  const input = document.getElementById("add-name");
+  const name = input.value.trim();
+  if (!name) return;
+  team().players.push({ id: state.nextId++, name, goalie: true, preferred: [] });
+  commit();
+  document.getElementById("add-name").focus();
+});
+
+document.getElementById("main").addEventListener("change", (e) => {
+  const el = e.target;
+  if (el.dataset.action !== "toggle-here") return;
+  const t = team(), id = Number(el.dataset.id);
+  t.absent = el.checked ? t.absent.filter((x) => x !== id) : [...t.absent, id];
+  commit();
+});
+
+document.getElementById("main").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-action]");
+  if (!b || b.disabled) return;
+  const t = team();
+  switch (b.dataset.action) {
+    case "new-team":
+      teamDialog(null);
+      break;
+    case "sample-team": {
+      const nt = { id: state.nextId++, name: "Sample team", formation: "SIX_2_3", format: "QUARTERS", players: [], absent: [], plan: null, planSaved: false, season: {} };
+      SAMPLE_NAMES.forEach((n) => nt.players.push({ id: state.nextId++, name: n, goalie: true, preferred: [] }));
+      state.teams.push(nt);
+      state.currentTeamId = nt.id;
+      ui.tab = "players";
+      commit();
+      toast("Sample team added. Rename or delete it from the team menu.");
+      break;
+    }
+    case "edit-player":
+      playerDialog(t, t.players.find((p) => p.id === Number(b.dataset.id)));
+      break;
+    case "make-lineup": {
+      const go = () => {
+        t.plan = generate(present(t), t.formation, FORMATS[t.format].periods, t.season);
+        t.planSaved = false;
+        ui.selected = null;
+        commit();
+      };
+      if (t.plan && !t.planSaved) confirmDialog("Replace this lineup?", "Any swaps you made will be lost.", "Replace", go);
+      else go();
+      break;
+    }
+    case "share": {
+      const text = lineupText(t);
+      if (navigator.share) {
+        try { await navigator.share({ text }); return; } catch (err) { if (err && err.name === "AbortError") return; }
+      }
+      textDialog("Share lineup", text);
+      break;
+    }
+    case "save-game":
+      confirmDialog("Save this game?", "Adds this lineup to the season totals, so future lineups give more time to kids who've sat more.", "Save", () => {
+        t.season = record(t.plan, planPlayers(t), t.season);
+        t.planSaved = true;
+        commit();
+        toast("Game saved to season");
+      });
+      break;
+    case "reset-season":
+      confirmDialog("Reset season totals?", "This clears every player's games, playing time and goalie counts for " + t.name + ".", "Reset", () => {
+        t.season = {};
+        commit();
+      });
+      break;
+    case "spot": {
+      const qi = Number(b.dataset.qi), slot = b.dataset.slot;
+      const cur = ui.selected;
+      if (!cur || cur.qi !== qi) ui.selected = { qi, slot };
+      else if (cur.slot === slot) ui.selected = null;
+      else {
+        t.plan = swap(t.plan, qi, cur.slot, slot);
+        ui.selected = null;
+        commit();
+        return;
+      }
+      render();
+      break;
+    }
+  }
+});
+
+render();
+initCloud();
+</script>
