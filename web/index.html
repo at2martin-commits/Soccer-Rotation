@@ -227,6 +227,7 @@ dialog::backdrop { background: rgba(8, 14, 10, 0.55); }
 .dlg .group { display: grid; gap: 6px; }
 .choice { display: flex; align-items: center; gap: 10px; min-height: 40px; }
 .choice input { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; flex: none; }
+.choice-hint { display: block; color: var(--muted); font-size: 0.85rem; line-height: 1.3; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip-toggle {
   min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 600;
@@ -369,6 +370,13 @@ const FORMATIONS = {
 };
 const formationPositions = (f) => POS_ORDER.filter((k) => FORMATIONS[f].fill.includes(k));
 const hasGoalie = (f) => FORMATIONS[f].fill.includes("GK");
+const STYLES = {
+  rotate: { label: "Rotate positions", hint: "Kids move around so everyone tries forward and defense. Preferred spots get extra turns." },
+  stick: { label: "Stick to positions", hint: "Kids stay in their preferred spot, or keep the spot they've been playing. More competitive." },
+};
+/** 9v9 defaults to sticking with positions; smaller games rotate. */
+const defaultStyle = (formation) => (formation.startsWith("NINE") ? "stick" : "rotate");
+const teamStyle = (t) => (STYLES[t.style] ? t.style : defaultStyle(t.formation));
 
 const FORMATS = {
   QUARTERS: { label: "4 quarters", periods: 4, unit: "quarters" },
@@ -404,18 +412,20 @@ const byKeys = (...keys) => (a, b) => {
  * many random candidates, the one with the best goalie spread, position variety and
  * preferred positions wins. Ties go against kids who have sat least this season.
  */
-function generate(players, formation, periods, season) {
+function generate(players, formation, periods, season, style = "rotate") {
   if (!players.length) return Array.from({ length: periods }, () => ({ positions: {}, bench: [] }));
+  const stick = style === "stick";
   let best = null, bestScore = Infinity;
   for (let i = 0; i < ATTEMPTS; i++) {
-    const plan = candidate(players, FORMATIONS[formation].fill, periods, season);
-    const s = score(plan, players, season);
+    const plan = candidate(players, FORMATIONS[formation].fill, periods, season, stick);
+    const s = score(plan, players, season, stick);
     if (s < bestScore) { best = plan; bestScore = s; }
   }
   return best;
 }
 
-function candidate(players, fill, periods, season) {
+/** `stick`: kids keep their preferred spot (or the spot they've been playing) instead of rotating. */
+function candidate(players, fill, periods, season, stick) {
   const onField = fill.slice(0, Math.min(fill.length, players.length));
   const benchSize = players.length - onField.length;
   const sits = {}, gk = {};
@@ -425,6 +435,7 @@ function candidate(players, fill, periods, season) {
   const lineCount = (id, line) => POS_ORDER.reduce((s, k) => s + (POS[k].line === line ? count(id, k) : 0), 0);
   const seasonOf = (p) => season[p.id] || {};
   let lastBench = new Set(), lastGoalie = null;
+  const lastSpot = {}; // last field spot each kid played, for sticking with positions
   const out = [];
 
   for (let q = 0; q < periods; q++) {
@@ -442,7 +453,7 @@ function candidate(players, fill, periods, season) {
     if (onField.includes("GK")) {
       const goalie = playing.slice().sort(byKeys(
         (p) => (p.goalie ? 0 : 1),
-        (p) => gk[p.id] * 2 - (p.preferred.includes("GK") ? 1 : 0),
+        (p) => (stick && p.preferred.includes("GK") ? -1 : gk[p.id] * 2 - (p.preferred.includes("GK") ? 1 : 0)),
         (p) => (p.id === lastGoalie ? 1 : 0),
         (p) => seasonOf(p).goalie || 0,
       ))[0];
@@ -461,11 +472,17 @@ function candidate(players, fill, periods, season) {
       let pick = null, cost = Infinity;
       for (const p of playing) {
         const sameLine = p.preferred.some((k) => k !== pos && POS[k].line === POS[pos].line);
-        const c = count(p.id, pos) * 10 + lineCount(p.id, POS[pos].line) * 3 + Math.random() * 6 -
-          (p.preferred.includes(pos) ? (count(p.id, pos) ? 12 : 22) : sameLine ? 6 : 0);
+        const c = stick
+          // Stick: preferred spot every time; otherwise stay where you've been playing.
+          ? Math.random() * 6 - (p.preferred.includes(pos) ? 40 : sameLine ? 15 :
+              (lastSpot[p.id] === pos ? 20 : lastSpot[p.id] && POS[lastSpot[p.id]].line === POS[pos].line ? 8 : 0) +
+              count(p.id, pos) * 4 + lineCount(p.id, POS[pos].line) * 2)
+          : count(p.id, pos) * 10 + lineCount(p.id, POS[pos].line) * 3 + Math.random() * 6 -
+            (p.preferred.includes(pos) ? (count(p.id, pos) ? 12 : 22) : sameLine ? 6 : 0);
         if (c < cost) { cost = c; pick = p; }
       }
       positions[pos] = pick.id;
+      lastSpot[pick.id] = pos;
       posCount.set(pick.id + "|" + pos, count(pick.id, pos) + 1);
       playing = playing.filter((p) => p !== pick);
     }
@@ -476,7 +493,7 @@ function candidate(players, fill, periods, season) {
 }
 
 /** Lower is better. */
-function score(plan, players, season) {
+function score(plan, players, season, stick) {
   const sums = summarize(plan, players);
   let s = 0;
   const sat = sums.map((x) => x.sat);
@@ -490,6 +507,22 @@ function score(plan, players, season) {
     const gk = x.positions.filter((k) => k === "GK").length;
     if (gk > 0 && !p.goalie && eligible.length) s += 500 * gk;
     if (gk > 1 && !likesGoal) s += (gk - 1) * (gk - 1) * 60;
+    if (stick) {
+      // Stick: every period in a preferred spot (or its line) counts, and staying put is a plus.
+      x.positions.forEach((k) => {
+        if (!k || k === "GK") return;
+        if (p.preferred.includes(k)) s -= 40;
+        else if (p.preferred.some((q) => q !== "GK" && POS[q].line === POS[k].line)) s -= 12;
+      });
+      const field = x.positions.filter((k) => k && k !== "GK");
+      for (let j = 1; j < field.length; j++) {
+        if (field[j] === field[j - 1]) s -= 10;
+        else if (POS[field[j]].line !== POS[field[j - 1]].line) s += 8;
+      }
+      for (let j = 1; j < x.positions.length; j++) if (!x.positions[j] && !x.positions[j - 1]) s += 40;
+      if (!likesGoal) s += gk * (((season[p.id] || {}).goalie || 0) - fewestSeasonGoalie) * 30;
+      return;
+    }
     if (!likesGoal) s += gk * (((season[p.id] || {}).goalie || 0) - fewestSeasonGoalie) * 30;
     for (let j = 1; j < x.positions.length; j++) if (!x.positions[j] && !x.positions[j - 1]) s += 40;
     // Preferred spots: a big plus the first time, a smaller one after that, and a little for
@@ -868,7 +901,7 @@ function render() {
   const t = team();
   document.getElementById("team-name").textContent = t ? t.name : "Soccer Rotation";
   document.getElementById("team-sub").textContent = t
-    ? FORMATIONS[t.formation].label + " · " + FORMATS[t.format].label
+    ? FORMATIONS[t.formation].label + " · " + FORMATS[t.format].label + (teamStyle(t) === "stick" ? " · stick to positions" : "")
     : "Fair playing time, every game";
   document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === ui.tab)));
   const main = document.getElementById("main");
@@ -1126,6 +1159,9 @@ function teamDialog(existing) {
       <input class="field" type="email" id="team-director" value="${existing ? esc(existing.director || "") : ""}" placeholder="director@example.org" inputmode="email" autocomplete="email"></div>
     <div class="group"><span class="lbl">Players on the field</span>${radios("formation", FORMATIONS, f)}</div>
     <div class="group"><span class="lbl">Game</span>${radios("format", FORMATS, g)}</div>
+    <div class="group"><span class="lbl">Positions</span>${Object.entries(STYLES).map(([k, v]) => `
+      <label class="choice"><input type="radio" name="style" id="style-${k}" value="${k}" ${k === (existing ? teamStyle(existing) : defaultStyle(f)) ? "checked" : ""}>
+        <span>${esc(v.label)}<small class="choice-hint">${esc(v.hint)}</small></span></label>`).join("")}</div>
     ${hasOpenLineups ? `<p class="hint">Changing the formation or game clears lineups for games not yet played. Played games keep theirs.</p>` : ""}
     <div class="dlg-actions">
       ${existing ? `<button class="btn danger" type="button" data-d="delete" style="margin-right:auto">Delete team</button>` : ""}
@@ -1138,8 +1174,10 @@ function teamDialog(existing) {
       const formation = dlg.querySelector('input[name="formation"]:checked').value;
       const format = dlg.querySelector('input[name="format"]:checked').value;
       const director = dlg.querySelector("#team-director").value.trim();
+      const style = dlg.querySelector('input[name="style"]:checked').value;
       if (existing) {
         existing.director = director;
+        existing.style = style;
         const keep = existing.formation === formation && existing.format === format;
         Object.assign(existing, { name, formation, format });
         if (!keep) {
@@ -1149,6 +1187,7 @@ function teamDialog(existing) {
       } else {
         const t = newTeam(name, formation, format);
         t.director = director;
+        t.style = style;
         state.teams.push(t);
         state.currentTeamId = t.id;
         ui.tab = "players";
@@ -1170,6 +1209,13 @@ function teamDialog(existing) {
       }
     },
   });
+  let styleTouched = !!(existing && existing.style);
+  dlg.querySelectorAll('input[name="style"]').forEach((r) => r.addEventListener("change", () => { styleTouched = true; }));
+  dlg.querySelectorAll('input[name="formation"]').forEach((r) => r.addEventListener("change", () => {
+    if (styleTouched) return;
+    const pick = dlg.querySelector("#style-" + defaultStyle(r.value));
+    if (pick) pick.checked = true;
+  }));
 }
 
 function gameDialog(t, g) {
@@ -1238,7 +1284,9 @@ function playerDialog(t, p) {
       <input class="field" id="player-name-input" value="${esc(p.name)}" autocapitalize="words"></div>
     ${hasGoalie(t.formation) ? `<label class="switch-row" for="player-goalie"><span>Can play goalie</span><input type="checkbox" id="player-goalie" ${p.goalie ? "checked" : ""}></label>` : ""}
     <div class="group"><span class="lbl">Preferred positions</span>
-      <p class="hint">They'll play here more often, and other spots on the same line a bit more too, but still rotate so every kid gets turns at forward and defense. Leave empty to rotate evenly.</p>
+      <p class="hint">${teamStyle(t) === "stick"
+        ? "They'll play here whenever they're on the field (this team sticks to positions). Leave empty to keep them in whatever spot they start in."
+        : "They'll play here more often, and other spots on the same line a bit more too, but still rotate so every kid gets turns at forward and defense. Leave empty to rotate evenly."}</p>
       <div class="chips" id="pref-chips">${chips()}</div></div>
     <div class="dlg-actions">
       <button class="btn danger" type="button" data-d="remove" style="margin-right:auto">Remove from team</button>
@@ -1554,7 +1602,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
       break;
     case "make-lineup": {
       const go = () => {
-        g.plan = generate(present(t), t.formation, FORMATS[t.format].periods, seasonTotals(t, g.id));
+        g.plan = generate(present(t), t.formation, FORMATS[t.format].periods, seasonTotals(t, g.id), teamStyle(t));
         g.formation = t.formation;
         g.format = t.format;
         ui.selected = null;

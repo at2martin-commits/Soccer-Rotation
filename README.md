@@ -11,7 +11,9 @@ To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Andr
 - **Players**: add players, check off who's here today, and tap a name to rename them,
   mark who can't play goalie, or pick preferred positions. A kid with a preferred
   position plays there more often (and nearby spots on the same line a bit more), but
-  still rotates, and every kid gets a turn at forward and defense first.
+  still rotates, and every kid gets a turn at forward and defense first. A team can
+  instead be set to **Stick to positions** (the default for 9v9): kids play their preferred
+  spot every period they're on the field, and others keep the spot they've been playing.
 - **Games**: add the dates from your schedule (with an optional opponent). On game day,
   open the game and make its lineup. Past games keep their lineups to look back on.
 - **Lineups**: each game's lineup covers every period at once. Play time is split as evenly as
