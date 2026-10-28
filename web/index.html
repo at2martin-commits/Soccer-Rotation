@@ -815,7 +815,6 @@ function normalize(s) {
       name: text(raw.name) || "Team",
       formation: FORMATIONS[raw.formation] ? raw.formation : "SIX_2_3",
       format: FORMATS[raw.format] ? raw.format : "QUARTERS",
-      emailTo: text(raw.emailTo ?? raw.director, 500),
       players: (Array.isArray(raw.players) ? raw.players : []).filter((p) => p && typeof p === "object").map((p) => ({
         id: num(p.id) ?? newId(),
         name: text(p.name) || "Player",
@@ -988,7 +987,6 @@ const ICON = {
   refresh: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
   share: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a3.3 3.3 0 0 0 0-1.39l7.05-4.11A3 3 0 1 0 15 5c0 .24.04.47.09.7L8.04 9.81a3 3 0 1 0 0 4.38l7.12 4.16c-.05.21-.08.43-.08.65A2.92 2.92 0 1 0 18 16.08z"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
-  mail: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"/></svg>',
   download: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg>',
   back: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>',
 };
@@ -1109,9 +1107,8 @@ function gameView(t, g) {
   } else {
     html += `<div class="btn-row">
       <span class="played-note grow">${ICON.check} Played</span>
-      <button class="btn" type="button" data-action="share">${ICON.share} Share</button>
-    </div>
-    <button class="btn primary full" type="button" data-action="email-report">${ICON.mail} Email results</button>`;
+      <button class="btn primary" type="button" data-action="share-results">${ICON.share} Share results</button>
+    </div>`;
   }
 
   if (!plan) {
@@ -1525,93 +1522,39 @@ function playerDialog(t, p) {
   syncGoalieChip();
 }
 
-/** Plain-text table with padded columns, for mail apps that drop formatting when pasting. */
-function reportPlainTable(d) {
-  const header = ["Player", ...d.periods, "Played", "Goals"];
-  const rows = d.rows.map((r) => [r.name, ...r.cells, r.played, String(r.goals || "")]);
-  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
-  const line = (cells) => cells.map((c, i) => c.padEnd(widths[i])).join("  ").trimEnd();
-  return [
-    "Team: " + d.team, "Opponent: " + (d.opponent || "—"), "Date: " + d.date, "Game: " + d.game, "",
-    line(header), widths.map((w) => "-".repeat(w)).join("  "), ...rows.map(line), "",
-    ...(d.legend ? [d.legend] : []), "Absent: " + (d.absent.length ? d.absent.join(", ") : "none"),
-  ].join("\n");
-}
-
-function emailDialog(t, g) {
+function shareResultsDialog(t, g) {
   const d = reportData(t, g);
   const subject = reportSubject(d);
   const fileName = (d.title + " " + g.date).replace(/[^\w-]+/g, "-") + ".png";
-  // One or more addresses, separated by commas, semicolons or spaces.
-  const recipients = (v) => v.split(/[\s,;]+/).filter(Boolean).join(",");
-  const mailHref = (to, body) => "mailto:" + encodeURIComponent(recipients(to)).replace(/%40/g, "@").replace(/%2C/gi, ",") +
-    "?subject=" + encodeURIComponent(subject) + (body ? "&body=" + encodeURIComponent(body) : "");
   const pictureBlob = () => new Promise((res) => reportCanvas(d).toBlob(res, "image/png"));
-  openDialog(`<h2>Email results</h2>
+  openDialog(`<h2>Share results</h2>
     <div class="report-preview">${reportHTML(d)}</div>
-    <div class="group"><label class="lbl" for="email-to">Send to <span class="hint">(optional)</span></label>
-      <input class="field" type="text" id="email-to" value="${esc(t.emailTo || "")}" placeholder="e.g. parent@example.org, coach@example.org" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false">
-      <p class="hint">Add one or more addresses, separated by commas. They're saved for this team.</p></div>
     <div class="email-actions">
-      <button class="btn primary" type="button" data-d="picture">${ICON.mail} Email picture</button>
-      <button class="btn" type="button" data-d="table">${ICON.mail} Email table</button>
+      <button class="btn primary" type="button" data-d="share">${ICON.share} Share</button>
       <button class="btn" type="button" data-d="download">${ICON.download} Download picture</button>
     </div>
     <ul class="how">
-      <li><strong>Email picture:</strong> opens your share menu with the picture attached. Pick Gmail or Mail. If you added addresses above, they're copied, so paste them into To.</li>
-      <li><strong>Email table:</strong> opens an email with the addresses and subject filled in. Long-press the message area and tap <strong>Paste</strong> to drop in the table.</li>
-      <li><strong>Download picture:</strong> saves the picture to your phone to attach or print later.</li>
+      <li><strong>Share:</strong> opens your phone's share menu with a picture of the results, to send by text, email or any app.</li>
+      <li><strong>Download picture:</strong> saves the picture to your phone to send or print later.</li>
     </ul>
     <div id="picture-out" hidden></div>
     <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button></div>`, {
-    picture: async () => {
-      saveRecipients();
-      const to = recipients(input.value).replace(/,/g, ", ");
-      // Copy the address first, inside the tap, so it's ready to paste into To.
-      let copied = false;
-      if (to) { try { await navigator.clipboard.writeText(to); copied = true; } catch (e) {} }
+    share: async () => {
       const blob = await pictureBlob();
       const file = blob && new File([blob], fileName, { type: "image/png" });
       if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: subject, text: subject });
-          if (copied) toast("Addresses copied. Paste them into To");
-          return;
-        } catch (err) {
-          if (err && err.name === "AbortError") return;
-        }
+        try { await navigator.share({ files: [file], title: subject, text: subject }); return; }
+        catch (err) { if (err && err.name === "AbortError") return; }
       }
-      showPicture(blob, "This browser can't attach the picture for you. Press and hold the picture to save it, then open the email and attach it.", true);
-    },
-    table: async () => {
-      saveRecipients();
-      const plain = reportPlainTable(d);
-      let copied = false;
-      try {
-        await navigator.clipboard.write([new ClipboardItem({
-          "text/html": new Blob([reportHTML(d)], { type: "text/html" }),
-          "text/plain": new Blob([plain], { type: "text/plain" }),
-        })]);
-        copied = true;
-      } catch (e) {
-        try { await navigator.clipboard.writeText(plain); copied = true; } catch (e2) {}
-      }
-      if (!copied) {
-        // No clipboard: put the plain table in the email body itself.
-        window.location.href = mailHref(input.value, plain);
-        return;
-      }
-      toast("Table copied. Paste it into the email.");
-      window.location.href = mailHref(input.value, "");
+      showPicture(blob, "This browser can't open the share menu with a picture. Press and hold the picture to save or share it.");
     },
     download: async () => {
-      saveRecipients();
       const blob = await pictureBlob();
       // Inside the claude.ai viewer, files are saved through its downloads prompt.
       const dl = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads") : null;
       if (dl) {
         try { await dl.save({ filename: fileName, data: blob }); toast("Picture saved"); }
-        catch (e) { if (!e || e.code !== "declined") showPicture(blob, "Press and hold the picture to save it.", false); }
+        catch (e) { if (!e || e.code !== "declined") showPicture(blob, "Press and hold the picture to save it."); }
         return;
       }
       const a = document.createElement("a");
@@ -1624,19 +1567,12 @@ function emailDialog(t, g) {
       toast("Picture downloaded");
     },
   });
-  const input = dlg.querySelector("#email-to");
-  function saveRecipients() {
-    const v = recipients(input.value).replace(/,/g, ", ");
-    if (v !== (t.emailTo || "")) { t.emailTo = v; commit(); }
-  }
-  function showPicture(blob, note, withEmail) {
+  function showPicture(blob, note) {
     const out = dlg.querySelector("#picture-out");
     out.hidden = false;
-    out.innerHTML = `<p class="hint">${esc(note)}</p><img alt="Playing time table" src="${URL.createObjectURL(blob)}">
-      ${withEmail ? `<a class="btn full" href="${mailHref(input.value, "Playing time table attached.")}">${ICON.mail} Open email</a>` : ""}`;
+    out.innerHTML = `<p class="hint">${esc(note)}</p><img alt="Playing time table" src="${URL.createObjectURL(blob)}">`;
     out.scrollIntoView({ block: "nearest" });
   }
-  input.addEventListener("change", saveRecipients);
 }
 
 const APP_VERSION = "2026.10.28";
@@ -1852,8 +1788,8 @@ document.getElementById("main").addEventListener("click", async (e) => {
         toast("Game marked as played");
       });
       break;
-    case "email-report":
-      emailDialog(t, g);
+    case "share-results":
+      shareResultsDialog(t, g);
       break;
     case "remove-goal": {
       const [x] = g.goals.splice(Number(b.dataset.i), 1);
