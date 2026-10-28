@@ -238,6 +238,52 @@ textarea.field { width: 100%; min-height: 120px; font-family: ui-monospace, Menl
   background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-weight: 600; z-index: 20;
   max-width: calc(100vw - 32px);
 }
+/* Games */
+.section-title {
+  margin: 6px 0 -4px; font-family: var(--font-display); font-weight: 700; font-size: 0.95rem;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+}
+.game-list { display: grid; gap: 8px; }
+.game-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px 8px 8px; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.game-row.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.gdate {
+  flex: none; width: 52px; display: grid; justify-items: center; line-height: 1;
+  border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--bg);
+}
+.gdate .mon {
+  width: 100%; text-align: center; padding: 3px 0; background: var(--accent); color: var(--accent-ink);
+  font-family: var(--font-display); font-weight: 700; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.gdate .day { font-family: var(--font-display); font-weight: 700; font-size: 1.45rem; padding-top: 3px; font-variant-numeric: tabular-nums; }
+.gdate .dow { font-size: 0.7rem; color: var(--muted); padding: 1px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.gmain { flex: 1; min-width: 0; display: grid; }
+.gmain strong { overflow-wrap: anywhere; }
+.gmain small { color: var(--muted); font-size: 0.85rem; }
+.status {
+  flex: none; font-size: 0.78rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.status.s-ready { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: transparent; color: var(--ink); }
+.status.s-played { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.game-head { display: grid; gap: 6px; }
+.back {
+  justify-self: start; display: inline-flex; align-items: center; gap: 2px; min-height: 40px; padding: 0 8px 0 0;
+  background: none; border: 0; color: var(--accent); font-weight: 700;
+}
+.back svg { width: 22px; height: 22px; }
+.gh-row { display: flex; align-items: flex-start; gap: 8px; }
+.gh-title { flex: 1; min-width: 0; }
+.gh-title h2 { font-size: 1.6rem; overflow-wrap: anywhere; }
+.played-note {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 700; min-width: 0;
+}
+.played-note svg { width: 20px; height: 20px; flex: none; color: var(--accent); }
+.dlg .lbl .hint { font-weight: 400; display: inline; }
+
 @media (prefers-reduced-motion: no-preference) {
   .spot { transition: border-color 0.12s, box-shadow 0.12s; }
 }
@@ -261,12 +307,12 @@ textarea.field { width: 100%; min-height: 120px; font-family: ui-monospace, Menl
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.3 0-8 1.7-8 5v1h16v-1c0-3.3-4.7-5-8-5z"/></svg>
       Players
     </button>
-    <button type="button" role="tab" data-tab="lineup" id="tab-lineup">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M4 12h16"/><circle cx="12" cy="12" r="2.5"/></svg>
-      Lineup
+    <button type="button" role="tab" data-tab="games" id="tab-games">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="1.5"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
+      Games
     </button>
     <button type="button" role="tab" data-tab="season" id="tab-season">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="1.5"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-7"/></svg>
       Season
     </button>
   </div>
@@ -465,26 +511,34 @@ function swap(plan, qi, a, b) {
   return plan.map((x, i) => (i === qi ? { positions, bench } : x));
 }
 
-function lineupText(team) {
-  const players = planPlayers(team);
-  const names = Object.fromEntries(players.map((p) => [p.id, p.name]));
-  const date = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-  const lines = [team.name + " – " + date];
-  team.plan.forEach((q, i) => {
-    lines.push("", periodName(team.format, i));
+function lineupText(t, g) {
+  const players = planPlayers(t, g);
+  const names = gameNames(t, g);
+  const lines = [t.name + " – " + longDate(g.date) + (g.opponent ? " vs " + g.opponent : "")];
+  g.plan.forEach((q, i) => {
+    lines.push("", periodName(g.format, i));
     POS_ORDER.forEach((k) => { if (q.positions[k] != null) lines.push("  " + POS[k].short + ": " + names[q.positions[k]]); });
     if (q.bench.length) lines.push("  Sits: " + q.bench.map((id) => names[id]).join(", "));
   });
-  lines.push("", "Playing time (" + FORMATS[team.format].unit + ")");
-  summarize(team.plan, players).forEach((x) => lines.push("  " + names[x.id] + ": " + x.played + "/" + team.plan.length));
+  lines.push("", "Playing time (" + FORMATS[g.format].unit + ")");
+  summarize(g.plan, players).forEach((x) => lines.push("  " + names[x.id] + ": " + x.played + "/" + g.plan.length));
   return lines.join("\n");
 }
+
+// ------------------------------------------------------------------ Dates
+
+const pad = (n) => String(n).padStart(2, "0");
+const dateStr = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const todayStr = () => dateStr(new Date());
+const toDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = toDate(s); d.setDate(d.getDate() + n); return dateStr(d); };
+const longDate = (s) => toDate(s).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
 // ------------------------------------------------------------------ State and saving
 
 const LOCAL_KEY = "soccer-rotation";
-let state = normalize(readLocal()) || { version: 2, nextId: 1, currentTeamId: null, teams: [], savedAt: 0 };
-let ui = { tab: state.teams.length ? "lineup" : "players", selected: null };
+let state = normalize(readLocal()) || { version: 3, nextId: 1, currentTeamId: null, teams: [], savedAt: 0 };
+let ui = { tab: state.teams.length ? "games" : "players", gameId: null, selected: null };
 let cloudRef = null, cloudTimer = null, cloudBusy = false, cloudPending = false;
 
 function readLocal() {
@@ -492,16 +546,48 @@ function readLocal() {
 }
 function normalize(s) {
   if (!s || !Array.isArray(s.teams)) return null;
+  s.nextId = s.nextId || 1;
+  s.savedAt = s.savedAt || 0;
   s.teams.forEach((t) => {
     t.players = (t.players || []).map((p) => ({ id: p.id, name: p.name, goalie: p.goalie !== false, preferred: p.preferred || [] }));
     t.absent = t.absent || [];
-    t.season = t.season || {};
     t.formation = FORMATIONS[t.formation] ? t.formation : "SIX_2_3";
     t.format = FORMATS[t.format] ? t.format : "QUARTERS";
-    t.plan = t.plan || null;
+    t.games = (t.games || []).map((g) => ({
+      id: g.id,
+      date: g.date || todayStr(),
+      opponent: g.opponent || "",
+      plan: g.plan || null,
+      formation: FORMATIONS[g.formation] ? g.formation : t.formation,
+      format: FORMATS[g.format] ? g.format : t.format,
+      played: !!g.played,
+      names: g.names || {},
+    }));
+    if (!t.seasonCarry) {
+      // Version 2 kept a single lineup plus running season totals. The lineup becomes a game
+      // dated today; totals from earlier saves are carried over without double-counting it.
+      const carry = JSON.parse(JSON.stringify(t.season || {}));
+      if (t.plan) {
+        const g = { id: s.nextId++, date: todayStr(), opponent: "", plan: t.plan, formation: t.formation, format: t.format, played: !!t.planSaved, names: {} };
+        if (g.played) {
+          summarize(g.plan, planPlayers(t, g)).forEach((x) => {
+            const c = carry[x.id];
+            if (!c) return;
+            c.played = Math.max(0, c.played - x.played);
+            c.sat = Math.max(0, c.sat - x.sat);
+            c.goalie = Math.max(0, c.goalie - x.positions.filter((k) => k === "GK").length);
+            c.games = Math.max(0, c.games - 1);
+          });
+        }
+        t.games.push(g);
+      }
+      t.seasonCarry = carry;
+    }
+    delete t.plan;
+    delete t.planSaved;
+    delete t.season;
   });
-  s.nextId = s.nextId || 1;
-  s.savedAt = s.savedAt || 0;
+  s.version = 3;
   return s;
 }
 function commit() {
@@ -562,13 +648,29 @@ async function initCloud() {
 
 const team = () => state.teams.find((t) => t.id === state.currentTeamId) || state.teams[0] || null;
 const present = (t) => t.players.filter((p) => !t.absent.includes(p.id));
-function planPlayers(t) {
-  if (!t.plan || !t.plan.length) return [];
-  const ids = new Set([...Object.values(t.plan[0].positions), ...t.plan[0].bench]);
+const currentGame = (t) => (t && ui.gameId != null ? t.games.find((g) => g.id === ui.gameId) || null : null);
+function planPlayers(t, g) {
+  if (!g.plan || !g.plan.length) return [];
+  const ids = new Set([...Object.values(g.plan[0].positions), ...g.plan[0].bench]);
   return t.players.filter((p) => ids.has(p.id));
+}
+/** Names for a game's lineup: current names, falling back to the name saved when it was played. */
+function gameNames(t, g) {
+  return { ...g.names, ...Object.fromEntries(t.players.map((p) => [p.id, p.name])) };
+}
+/** Season totals: carried-over totals plus every game marked played (optionally leaving one out). */
+function seasonTotals(t, excludeId) {
+  let totals = JSON.parse(JSON.stringify(t.seasonCarry || {}));
+  t.games.forEach((g) => {
+    if (g.played && g.plan && g.id !== excludeId) totals = record(g.plan, planPlayers(t, g), totals);
+  });
+  return totals;
 }
 function sameIds(a, b) {
   return a.length === b.length && a.every((p) => b.some((q) => q.id === p.id));
+}
+function newTeam(name, formation, format) {
+  return { id: state.nextId++, name, formation, format, players: [], absent: [], games: [], seasonCarry: {} };
 }
 
 // ------------------------------------------------------------------ Rendering
@@ -580,6 +682,7 @@ const ICON = {
   refresh: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
   share: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a3.3 3.3 0 0 0 0-1.39l7.05-4.11A3 3 0 1 0 15 5c0 .24.04.47.09.7L8.04 9.81a3 3 0 1 0 0 4.38l7.12 4.16c-.05.21-.08.43-.08.65A2.92 2.92 0 1 0 18 16.08z"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
+  back: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>',
 };
 
 function render() {
@@ -594,15 +697,17 @@ function render() {
     main.innerHTML = `
       <div class="panel empty">
         <h2>Set up your first team</h2>
-        <p class="hint">Add your players, check off who showed up, and get a lineup where every kid gets fair time on the field.</p>
+        <p class="hint">Add your players and game dates, check off who showed up, and get a lineup where every kid gets fair time on the field.</p>
         <button class="btn primary" type="button" data-action="new-team">${ICON.plus} Create a team</button>
         <button class="btn" type="button" data-action="sample-team">Try it with sample names</button>
       </div>`;
     return;
   }
   if (ui.tab === "players") main.innerHTML = playersView(t);
-  else if (ui.tab === "lineup") main.innerHTML = lineupView(t);
-  else main.innerHTML = seasonView(t);
+  else if (ui.tab === "games") {
+    const g = currentGame(t);
+    main.innerHTML = g ? gameView(t, g) : gamesView(t);
+  } else main.innerHTML = seasonView(t);
 }
 
 function playersView(t) {
@@ -632,72 +737,137 @@ function playersView(t) {
     <div class="roster">${rows}</div>`;
 }
 
-function lineupView(t) {
-  const plan = t.plan;
-  const here = present(t);
-  const changed = plan && !sameIds(planPlayers(t), here);
+function gameStatus(g, today) {
+  if (g.played) return ["played", "Played"];
+  if (g.plan) return ["ready", "Lineup ready"];
+  return ["none", g.date < today ? "No lineup" : "No lineup yet"];
+}
+
+function gamesView(t) {
+  const today = todayStr();
+  const games = t.games.slice().sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  const upcoming = games.filter((g) => g.date >= today && !g.played);
+  const past = games.filter((g) => g.date < today || g.played).reverse();
+  const hasToday = games.some((g) => g.date === today);
+  const row = (g) => {
+    const d = toDate(g.date);
+    const [cls, label] = gameStatus(g, today);
+    return `<button class="game-row${g.date === today ? " today" : ""}" type="button" data-action="open-game" data-id="${g.id}">
+      <span class="gdate" aria-hidden="true">
+        <span class="mon">${esc(d.toLocaleDateString(undefined, { month: "short" }))}</span>
+        <span class="day">${d.getDate()}</span>
+        <span class="dow">${esc(d.toLocaleDateString(undefined, { weekday: "short" }))}</span>
+      </span>
+      <span class="gmain"><strong>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</strong>
+        <small>${g.date === today ? "Today · " : ""}${esc(longDate(g.date))}</small></span>
+      <span class="status s-${cls}">${label}</span>
+    </button>`;
+  };
   let html = `
     <div class="btn-row">
+      <button class="btn primary grow" type="button" data-action="add-game">${ICON.plus} Add game</button>
+      ${hasToday ? "" : `<button class="btn" type="button" data-action="quick-game">Game today</button>`}
+    </div>`;
+  if (!games.length) {
+    return html + `<div class="panel empty">
+      <h2>Add your schedule</h2>
+      <p class="hint">Enter the dates from your team's schedule. On game day, open the game to make its lineup. Past games keep their lineups so you can look back.</p>
+    </div>`;
+  }
+  if (upcoming.length) html += `<h3 class="section-title">Coming up</h3><div class="game-list">${upcoming.map(row).join("")}</div>`;
+  if (past.length) html += `<h3 class="section-title">Past games</h3><div class="game-list">${past.map(row).join("")}</div>`;
+  return html;
+}
+
+function gameView(t, g) {
+  const plan = g.plan;
+  const here = present(t);
+  const changed = plan && !g.played && !sameIds(planPlayers(t, g), here);
+  let html = `
+    <div class="game-head">
+      <button class="back" type="button" data-action="back">${ICON.back} All games</button>
+      <div class="gh-row">
+        <div class="gh-title"><h2>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</h2><p class="hint">${esc(longDate(g.date))}</p></div>
+        <button class="icon-btn" type="button" data-action="edit-game" aria-label="Edit game date or opponent">${ICON.edit}</button>
+      </div>
+    </div>`;
+
+  if (!g.played) {
+    html += `<div class="btn-row">
       <button class="btn primary grow" type="button" data-action="make-lineup" ${here.length ? "" : "disabled"}>${ICON.refresh} ${plan ? "New lineup" : "Make lineup"}</button>
       ${plan ? `<button class="btn" type="button" data-action="share">${ICON.share} Share</button>` : ""}
     </div>`;
-  if (plan) {
-    html += `<button class="btn full" type="button" data-action="save-game" ${t.planSaved || changed ? "disabled" : ""}>${ICON.check} ${t.planSaved ? "Game saved to season" : "Save game"}</button>`;
+    if (plan) html += `<button class="btn full" type="button" data-action="mark-played" ${changed ? "disabled" : ""}>${ICON.check} Mark as played</button>`;
+  } else {
+    html += `<div class="btn-row">
+      <span class="played-note grow">${ICON.check} Played</span>
+      <button class="btn" type="button" data-action="share">${ICON.share} Share</button>
+    </div>`;
   }
+
   if (!plan) {
-    return html + `<p class="hint">${t.players.length ? here.length + " players here. Tap Make lineup to build the game." : "Add your players on the Players tab first."}</p>`;
+    return html + `<p class="hint">${t.players.length
+      ? `${here.length} of ${t.players.length} players are checked in on the Players tab. The lineup uses them, so update attendance first if needed.`
+      : "Add your players on the Players tab first."}</p>`;
   }
   if (changed) html += `<div class="warn">Attendance changed since this lineup was made. Tap New lineup to include the right kids.</div>`;
-  html += `<p class="hint">Tap two players in the same box to swap them. ★ marks a preferred spot.</p>`;
+  html += `<p class="hint">Tap two players in the same box to swap them.${g.played ? " Changes update the season totals." : ""} ★ marks a preferred spot.</p>`;
 
   const byId = Object.fromEntries(t.players.map((p) => [p.id, p]));
+  const names = gameNames(t, g);
   plan.forEach((q, qi) => {
     const sel = ui.selected && ui.selected.qi === qi ? ui.selected.slot : null;
     const spot = (slot, label) => {
       const id = playerAt(q, slot);
       const p = id != null ? byId[id] : null;
+      const name = id != null ? names[id] : null;
       const liked = p && slot.startsWith("F:") && p.preferred.includes(slot.slice(2));
-      return `<button type="button" class="spot${sel === slot ? " sel" : ""}${p ? "" : " empty-spot"}" data-action="spot" data-qi="${qi}" data-slot="${slot}" aria-pressed="${sel === slot}">
-        <span class="pos">${label}${liked ? " ★" : ""}</span><span class="who">${p ? esc(p.name) : "—"}</span></button>`;
+      return `<button type="button" class="spot${sel === slot ? " sel" : ""}${name ? "" : " empty-spot"}" data-action="spot" data-qi="${qi}" data-slot="${slot}" aria-pressed="${sel === slot}">
+        <span class="pos">${label}${liked ? " ★" : ""}</span><span class="who">${name ? esc(name) : "—"}</span></button>`;
     };
+    // Rows come from the lineup itself, so past games still draw right after a formation change.
     const rows = ["FORWARD", "MIDFIELD", "DEFENSE", "GOAL"]
-      .map((line) => formationPositions(t.formation).filter((k) => POS[k].line === line && q.positions[k] != null))
+      .map((line) => POS_ORDER.filter((k) => POS[k].line === line && q.positions[k] != null))
       .filter((r) => r.length)
       .map((r) => `<div class="prow">${r.map((k) => spot("F:" + k, POS[k].short)).join("")}</div>`)
       .join("");
     const bench = q.bench.length
       ? `<div class="bench"><span class="label">Sitting</span><div class="prow">${q.bench.map((_, i) => spot("B:" + i, "SITS")).join("")}</div></div>`
       : "";
-    html += `<section class="panel period" aria-label="${esc(periodName(t.format, qi))}">
-      <div class="period-head"><h2>${esc(periodName(t.format, qi))}</h2></div>
+    html += `<section class="panel period" aria-label="${esc(periodName(g.format, qi))}">
+      <div class="period-head"><h2>${esc(periodName(g.format, qi))}</h2></div>
       <div class="pitch">${rows}</div>${bench}</section>`;
   });
 
-  const players = planPlayers(t);
+  const players = planPlayers(t, g);
+  const unit = FORMATS[g.format].unit;
   const rows = summarize(plan, players).map((x, i) => `
     <tr><td class="nm">${esc(players[i].name)}</td>
     <td class="seq">${x.positions.map((k) => (k ? `<span class="tag">${POS[k].short}</span>` : `<span class="tag sat">–</span>`)).join("")}</td>
     <td class="tot">${x.played}/${plan.length}</td></tr>`).join("");
-  html += `<section class="panel"><h2>Playing time</h2><p class="hint">Positions by ${FORMATS[t.format].unit === "halves" ? "half" : FORMATS[t.format].unit === "quarters" ? "quarter" : "segment"}, and ${FORMATS[t.format].unit} played.</p>
+  html += `<section class="panel"><h2>Playing time</h2><p class="hint">Positions by ${unit === "halves" ? "half" : unit === "quarters" ? "quarter" : "segment"}, and ${unit} played.</p>
     <table class="timeline"><tbody>${rows}</tbody></table></section>`;
+  if (g.played) html += `<button class="btn" type="button" data-action="unmark-played">Mark as not played</button>`;
   return html;
 }
 
 function seasonView(t) {
+  const totals = seasonTotals(t);
+  const played = t.games.filter((g) => g.played).length;
   const rows = t.players.map((p) => {
-    const s = t.season[p.id] || { games: 0, played: 0, sat: 0, goalie: 0 };
+    const s = totals[p.id] || { games: 0, played: 0, sat: 0, goalie: 0 };
     return `<tr><td>${esc(p.name)}</td><td>${s.games}</td><td>${s.played}</td><td>${s.sat}</td><td>${s.goalie}</td></tr>`;
   }).join("");
   return `
     <div class="panel">
       <h2>Season totals</h2>
-      <p class="hint">From games you saved for ${esc(t.name)}. New lineups give extra time to kids who've sat more, and spread goalie turns. Played and Sat count ${FORMATS[t.format].unit}.</p>
+      <p class="hint">${played} ${played === 1 ? "game" : "games"} marked played for ${esc(t.name)}. New lineups give extra time to kids who've sat more, and spread goalie turns. Played and Sat count ${FORMATS[t.format].unit}.</p>
       <div class="table-wrap"><table class="season">
         <thead><tr><th>Player</th><th>Games</th><th>Played</th><th>Sat</th><th>Goalie</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="5">No players yet.</td></tr>`}</tbody>
       </table></div>
     </div>
-    <button class="btn" type="button" data-action="reset-season" ${Object.keys(t.season).length ? "" : "disabled"}>Reset season</button>`;
+    <button class="btn" type="button" data-action="new-season" ${t.games.length || Object.keys(t.seasonCarry).length ? "" : "disabled"}>Start new season</button>`;
 }
 
 // ------------------------------------------------------------------ Dialogs
@@ -742,7 +912,7 @@ function teamMenu() {
       ${t ? `<button class="btn" type="button" data-d="edit">${ICON.edit} Edit this team</button>` : ""}
       <button class="btn primary" type="button" data-d="new">${ICON.plus} New team</button>
     </div>`, {
-    pick: (b) => { state.currentTeamId = Number(b.dataset.id); ui.selected = null; closeDialog(); commit(); },
+    pick: (b) => { state.currentTeamId = Number(b.dataset.id); ui.selected = null; ui.gameId = null; closeDialog(); commit(); },
     edit: () => teamDialog(team()),
     new: () => teamDialog(null),
     backup: backupDialog,
@@ -754,12 +924,13 @@ function teamDialog(existing) {
   const g = existing ? existing.format : "QUARTERS";
   const radios = (name, opts, cur) => Object.entries(opts).map(([k, v]) => `
     <label class="choice"><input type="radio" name="${name}" id="${name}-${k}" value="${k}" ${k === cur ? "checked" : ""}> ${esc(v.label)}</label>`).join("");
+  const hasOpenLineups = existing && existing.games.some((x) => x.plan && !x.played);
   openDialog(`<h2>${existing ? "Edit team" : "New team"}</h2>
     <div class="group"><label class="lbl" for="team-name-input">Team name</label>
       <input class="field" id="team-name-input" value="${existing ? esc(existing.name) : ""}" placeholder="e.g. U8 Thunder" autocapitalize="words" autofocus></div>
     <div class="group"><span class="lbl">Players on the field</span>${radios("formation", FORMATIONS, f)}</div>
     <div class="group"><span class="lbl">Game</span>${radios("format", FORMATS, g)}</div>
-    ${existing && existing.plan ? `<p class="hint">Changing the formation or game clears the current lineup.</p>` : ""}
+    ${hasOpenLineups ? `<p class="hint">Changing the formation or game clears lineups for games not yet played. Played games keep theirs.</p>` : ""}
     <div class="dlg-actions">
       ${existing ? `<button class="btn danger" type="button" data-d="delete" style="margin-right:auto">Delete team</button>` : ""}
       <button class="btn" type="button" data-d="cancel">Cancel</button>
@@ -773,12 +944,16 @@ function teamDialog(existing) {
       if (existing) {
         const keep = existing.formation === formation && existing.format === format;
         Object.assign(existing, { name, formation, format });
-        if (!keep) { existing.plan = null; existing.planSaved = false; ui.selected = null; }
+        if (!keep) {
+          existing.games.forEach((x) => { if (!x.played) x.plan = null; });
+          ui.selected = null;
+        }
       } else {
-        const t = { id: state.nextId++, name, formation, format, players: [], absent: [], plan: null, planSaved: false, season: {} };
+        const t = newTeam(name, formation, format);
         state.teams.push(t);
         state.currentTeamId = t.id;
         ui.tab = "players";
+        ui.gameId = null;
       }
       closeDialog();
       commit();
@@ -787,6 +962,7 @@ function teamDialog(existing) {
       if (b.dataset.armed) {
         state.teams = state.teams.filter((x) => x.id !== existing.id);
         state.currentTeamId = state.teams[0] ? state.teams[0].id : null;
+        ui.gameId = null;
         closeDialog();
         commit();
       } else {
@@ -795,6 +971,63 @@ function teamDialog(existing) {
       }
     },
   });
+}
+
+function gameDialog(t, g) {
+  const last = t.games.reduce((m, x) => (x.date > m ? x.date : m), "");
+  const suggested = last && last >= todayStr() ? addDays(last, 7) : todayStr();
+  const date = g ? g.date : suggested;
+  openDialog(`<h2>${g ? "Edit game" : "Add game"}</h2>
+    <div class="group"><label class="lbl" for="game-date">Date</label>
+      <input class="field" type="date" id="game-date" value="${date}"></div>
+    <div class="group"><label class="lbl" for="game-opp">Opponent <span class="hint">(optional)</span></label>
+      <input class="field" id="game-opp" value="${g ? esc(g.opponent) : ""}" placeholder="e.g. Tigers" autocapitalize="words"></div>
+    <p class="hint" id="game-msg" hidden></p>
+    <div class="dlg-actions">
+      ${g ? `<button class="btn danger" type="button" data-d="delete" style="margin-right:auto">Delete game</button>` : ""}
+      <button class="btn" type="button" data-d="cancel">Cancel</button>
+      ${g ? "" : `<button class="btn" type="button" data-d="another">Add another</button>`}
+      <button class="btn primary" type="button" data-d="save">Save</button>
+    </div>`, {
+    save: () => saveGame(false),
+    another: () => saveGame(true),
+    delete: (b) => {
+      if (b.dataset.armed) {
+        t.games = t.games.filter((x) => x.id !== g.id);
+        ui.gameId = null;
+        closeDialog();
+        commit();
+      } else {
+        b.dataset.armed = "1";
+        b.textContent = g.played ? "Tap again: also removes it from season totals" : "Tap again to delete this game";
+      }
+    },
+  });
+  function saveGame(another) {
+    const d = dlg.querySelector("#game-date").value;
+    const msg = dlg.querySelector("#game-msg");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      msg.hidden = false;
+      msg.textContent = "Pick the game's date.";
+      return;
+    }
+    const opponent = dlg.querySelector("#game-opp").value.trim();
+    if (g) {
+      g.date = d;
+      g.opponent = opponent;
+    } else {
+      t.games.push({ id: state.nextId++, date: d, opponent, plan: null, formation: t.formation, format: t.format, played: false, names: {} });
+    }
+    commit();
+    if (another) {
+      gameDialog(t, null);
+      dlg.querySelector("#game-date").value = addDays(d, 7);
+      dlg.querySelector("#game-opp").focus();
+      toast("Added " + longDate(d));
+    } else {
+      closeDialog();
+    }
+  }
 }
 
 function playerDialog(t, p) {
@@ -830,9 +1063,11 @@ function playerDialog(t, p) {
     },
     remove: (b) => {
       if (b.dataset.armed) {
+        // Keep their name on past games they played in.
+        t.games.forEach((g) => { if (g.played) g.names[p.id] = g.names[p.id] || p.name; });
         t.players = t.players.filter((x) => x.id !== p.id);
         t.absent = t.absent.filter((id) => id !== p.id);
-        delete t.season[p.id];
+        delete t.seasonCarry[p.id];
         closeDialog();
         commit();
       } else {
@@ -882,7 +1117,7 @@ function backupDialog() {
         return;
       }
       state = parsed;
-      ui = { tab: "lineup", selected: null };
+      ui = { tab: "games", gameId: null, selected: null };
       closeDialog();
       commit();
       toast("Backup restored");
@@ -916,6 +1151,8 @@ const SAMPLE_NAMES = ["Ava", "Bella", "Chloe", "Dani", "Emma", "Faith", "Grace",
 
 document.getElementById("team-btn").addEventListener("click", () => (state.teams.length ? teamMenu() : teamDialog(null)));
 document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
+  // Tapping Games while already there goes back to the list.
+  if (b.dataset.tab === "games" && ui.tab === "games") ui.gameId = null;
   ui.tab = b.dataset.tab;
   ui.selected = null;
   render();
@@ -941,16 +1178,24 @@ document.getElementById("main").addEventListener("change", (e) => {
   commit();
 });
 
+function openGame(id) {
+  ui.gameId = id;
+  ui.selected = null;
+  render();
+  window.scrollTo(0, 0);
+}
+
 document.getElementById("main").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-action]");
   if (!b || b.disabled) return;
   const t = team();
+  const g = currentGame(t);
   switch (b.dataset.action) {
     case "new-team":
       teamDialog(null);
       break;
     case "sample-team": {
-      const nt = { id: state.nextId++, name: "Sample team", formation: "SIX_2_3", format: "QUARTERS", players: [], absent: [], plan: null, planSaved: false, season: {} };
+      const nt = newTeam("Sample team", "SIX_2_3", "QUARTERS");
       SAMPLE_NAMES.forEach((n) => nt.players.push({ id: state.nextId++, name: n, goalie: true, preferred: [] }));
       state.teams.push(nt);
       state.currentTeamId = nt.id;
@@ -962,36 +1207,65 @@ document.getElementById("main").addEventListener("click", async (e) => {
     case "edit-player":
       playerDialog(t, t.players.find((p) => p.id === Number(b.dataset.id)));
       break;
+    case "add-game":
+      gameDialog(t, null);
+      break;
+    case "quick-game": {
+      const ng = { id: state.nextId++, date: todayStr(), opponent: "", plan: null, formation: t.formation, format: t.format, played: false, names: {} };
+      t.games.push(ng);
+      ui.gameId = ng.id;
+      commit();
+      break;
+    }
+    case "open-game":
+      openGame(Number(b.dataset.id));
+      break;
+    case "back":
+      ui.gameId = null;
+      ui.selected = null;
+      render();
+      break;
+    case "edit-game":
+      gameDialog(t, g);
+      break;
     case "make-lineup": {
       const go = () => {
-        t.plan = generate(present(t), t.formation, FORMATS[t.format].periods, t.season);
-        t.planSaved = false;
+        g.plan = generate(present(t), t.formation, FORMATS[t.format].periods, seasonTotals(t, g.id));
+        g.formation = t.formation;
+        g.format = t.format;
         ui.selected = null;
         commit();
       };
-      if (t.plan && !t.planSaved) confirmDialog("Replace this lineup?", "Any swaps you made will be lost.", "Replace", go);
+      if (g.plan) confirmDialog("Replace this lineup?", "Any swaps you made will be lost.", "Replace", go);
       else go();
       break;
     }
     case "share": {
-      const text = lineupText(t);
+      const text = lineupText(t, g);
       if (navigator.share) {
         try { await navigator.share({ text }); return; } catch (err) { if (err && err.name === "AbortError") return; }
       }
       textDialog("Share lineup", text);
       break;
     }
-    case "save-game":
-      confirmDialog("Save this game?", "Adds this lineup to the season totals, so future lineups give more time to kids who've sat more.", "Save", () => {
-        t.season = record(t.plan, planPlayers(t), t.season);
-        t.planSaved = true;
+    case "mark-played":
+      confirmDialog("Mark this game as played?", "It's added to the season totals, so future lineups give more time to kids who've sat more.", "Mark as played", () => {
+        g.played = true;
+        planPlayers(t, g).forEach((p) => { g.names[p.id] = p.name; });
         commit();
-        toast("Game saved to season");
+        toast("Game marked as played");
       });
       break;
-    case "reset-season":
-      confirmDialog("Reset season totals?", "This clears every player's games, playing time and goalie counts for " + t.name + ".", "Reset", () => {
-        t.season = {};
+    case "unmark-played":
+      g.played = false;
+      commit();
+      toast("Removed from season totals");
+      break;
+    case "new-season":
+      confirmDialog("Start a new season?", "This removes all of " + t.name + "'s games, past and upcoming, and clears season totals. Players stay.", "Start new season", () => {
+        t.games = [];
+        t.seasonCarry = {};
+        ui.gameId = null;
         commit();
       });
       break;
@@ -1001,7 +1275,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
       if (!cur || cur.qi !== qi) ui.selected = { qi, slot };
       else if (cur.slot === slot) ui.selected = null;
       else {
-        t.plan = swap(t.plan, qi, cur.slot, slot);
+        g.plan = swap(g.plan, qi, cur.slot, slot);
         ui.selected = null;
         commit();
         return;
