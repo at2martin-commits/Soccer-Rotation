@@ -16,7 +16,8 @@ To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Andr
 - **Lineups**: each game's lineup covers every period at once. Play time is split as evenly as
   possible, nobody sits twice in a row, goalie turns are spread out, and kids move
   between positions. Tap two players in a period to swap them. Share sends the lineup
-  as text.
+  as text. Double-tap a player on the field to record a goal; remove a mistaken one from
+  the game's Goals list.
 - **Season**: tap **Mark as played** after a game and future lineups give extra time to
   kids who've sat more, and spread goalie turns across the season.
 
