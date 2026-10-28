@@ -7,10 +7,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -18,7 +24,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -32,7 +41,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val storage = Storage(this)
         setContent {
-            MaterialTheme(colorScheme = if (androidx.compose.foundation.isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 App(storage, onShare = ::share)
             }
         }
@@ -47,7 +56,10 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Tab(val label: String) { TEAM("Team"), GAME("Lineup"), SEASON("Season") }
+private enum class Tab { TEAM, GAME, SEASON }
+
+/** null id = creating a new team. */
+private data class TeamEdit(val id: Long?)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,76 +69,254 @@ private fun App(storage: Storage, onShare: (String) -> Unit) {
         state = new
         storage.save(new)
     }
-    var tab by rememberSaveable { mutableStateOf(if (state.players.isEmpty()) Tab.TEAM else Tab.GAME) }
+    var tab by rememberSaveable { mutableStateOf(if (state.team?.players.isNullOrEmpty()) Tab.TEAM else Tab.GAME) }
+    var teamEdit by remember { mutableStateOf<TeamEdit?>(if (state.teams.isEmpty()) TeamEdit(null) else null) }
+    var menuOpen by remember { mutableStateOf(false) }
+    val team = state.team
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Soccer Rotation") }) },
+        topBar = {
+            TopAppBar(title = {
+                Box {
+                    Row(
+                        Modifier.clickable { if (state.teams.isEmpty()) teamEdit = TeamEdit(null) else menuOpen = true },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text(team?.name ?: "Soccer Rotation", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            team?.let {
+                                Text(
+                                    "${it.formation.label} · ${it.format.label}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Icon(Icons.Filled.ArrowDropDown, "Switch team")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        state.teams.forEach { t ->
+                            DropdownMenuItem(
+                                text = { Text(t.name) },
+                                leadingIcon = { if (t.id == team?.id) Icon(Icons.Filled.Check, null) },
+                                onClick = {
+                                    update(state.copy(currentTeamId = t.id))
+                                    menuOpen = false
+                                },
+                            )
+                        }
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Edit this team") },
+                            leadingIcon = { Icon(Icons.Filled.Edit, null) },
+                            onClick = { teamEdit = TeamEdit(team?.id); menuOpen = false },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("New team") },
+                            leadingIcon = { Icon(Icons.Filled.Add, null) },
+                            onClick = { teamEdit = TeamEdit(null); menuOpen = false },
+                        )
+                    }
+                }
+            })
+        },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(tab == Tab.TEAM, { tab = Tab.TEAM }, { Icon(Icons.Filled.Person, null) }, label = { Text("Team") })
+                NavigationBarItem(tab == Tab.TEAM, { tab = Tab.TEAM }, { Icon(Icons.Filled.Person, null) }, label = { Text("Players") })
                 NavigationBarItem(tab == Tab.GAME, { tab = Tab.GAME }, { Icon(Icons.Filled.PlayArrow, null) }, label = { Text("Lineup") })
                 NavigationBarItem(tab == Tab.SEASON, { tab = Tab.SEASON }, { Icon(Icons.Filled.DateRange, null) }, label = { Text("Season") })
             }
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
-            when (tab) {
-                Tab.TEAM -> TeamScreen(state, ::update)
-                Tab.GAME -> GameScreen(state, ::update, onShare)
-                Tab.SEASON -> SeasonScreen(state, ::update)
+            if (team == null) {
+                Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Create a team to get started.", textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { teamEdit = TeamEdit(null) }) { Text("New team") }
+                }
+            } else {
+                val updateTeam: ((Team) -> Team) -> Unit = { change -> update(state.updateTeam(change)) }
+                when (tab) {
+                    Tab.TEAM -> PlayersScreen(team, updateTeam) { name ->
+                        val id = state.nextId
+                        update(state.copy(nextId = id + 1).updateTeam { it.copy(players = it.players + Player(id, name)) })
+                    }
+                    Tab.GAME -> GameScreen(team, updateTeam, onShare)
+                    Tab.SEASON -> SeasonScreen(team, updateTeam)
+                }
             }
         }
     }
+
+    teamEdit?.let { edit ->
+        val existing = state.teams.firstOrNull { it.id == edit.id }
+        TeamDialog(
+            existing = existing,
+            canCancel = state.teams.isNotEmpty(),
+            onDismiss = { teamEdit = null },
+            onSave = { name, formation, format ->
+                if (existing == null) {
+                    val newTeam = Team(id = state.nextId, name = name, formation = formation, format = format)
+                    update(state.copy(teams = state.teams + newTeam, currentTeamId = newTeam.id, nextId = state.nextId + 1))
+                    tab = Tab.TEAM
+                } else {
+                    update(state.copy(teams = state.teams.map {
+                        if (it.id != existing.id) it
+                        else {
+                            val lineupStillValid = it.formation == formation && it.format == format
+                            it.copy(
+                                name = name,
+                                formation = formation,
+                                format = format,
+                                plan = if (lineupStillValid) it.plan else null,
+                                planSaved = if (lineupStillValid) it.planSaved else false,
+                            )
+                        }
+                    }))
+                }
+                teamEdit = null
+            },
+            onDelete = existing?.let {
+                {
+                    val remaining = state.teams.filter { t -> t.id != it.id }
+                    update(state.copy(teams = remaining, currentTeamId = remaining.firstOrNull()?.id))
+                    teamEdit = if (remaining.isEmpty()) TeamEdit(null) else null
+                }
+            },
+        )
+    }
 }
 
-// ---------------------------------------------------------------- Team
+// ---------------------------------------------------------------- Team settings
 
 @Composable
-private fun TeamScreen(state: AppState, update: (AppState) -> Unit) {
+private fun TeamDialog(
+    existing: Team?,
+    canCancel: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String, Formation, GameFormat) -> Unit,
+    onDelete: (() -> Unit)?,
+) {
+    var name by remember { mutableStateOf(existing?.name ?: "") }
+    var formation by remember { mutableStateOf(existing?.formation ?: Formation.SIX_2_3) }
+    var format by remember { mutableStateOf(existing?.format ?: GameFormat.QUARTERS) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { if (canCancel) onDismiss() },
+        title = { Text(if (existing == null) "New team" else "Edit team") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Team name") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("Players on the field", style = MaterialTheme.typography.titleSmall)
+                Formation.entries.forEach { f ->
+                    RadioRow(f.label, selected = formation == f) { formation = f }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Game", style = MaterialTheme.typography.titleSmall)
+                GameFormat.entries.forEach { g ->
+                    RadioRow(g.label, selected = format == g) { format = g }
+                }
+                if (existing != null && (formation != existing.formation || format != existing.format) && existing.plan != null) {
+                    Text(
+                        "Changing this clears the current lineup.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (onDelete != null) {
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(
+                        onClick = { confirmDelete = true },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    ) { Text("Delete team") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name.trim(), formation, format) }, enabled = name.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = { if (canCancel) TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+
+    if (confirmDelete && existing != null && onDelete != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete ${existing.name}?") },
+            text = { Text("Its players, lineup and season totals will be removed.") },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().selectable(selected = selected, onClick = onClick).padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Spacer(Modifier.width(8.dp))
+        Text(label)
+    }
+}
+
+// ---------------------------------------------------------------- Players
+
+@Composable
+private fun PlayersScreen(team: Team, updateTeam: ((Team) -> Team) -> Unit, onAdd: (String) -> Unit) {
     var newName by remember { mutableStateOf("") }
-    var renaming by remember { mutableStateOf<Player?>(null) }
-    var deleting by remember { mutableStateOf<Player?>(null) }
+    var editing by remember { mutableStateOf<Player?>(null) }
 
     fun add() {
         val name = newName.trim()
         if (name.isEmpty()) return
-        update(state.copy(players = state.players + Player(state.nextId, name), nextId = state.nextId + 1))
+        onAdd(name)
         newName = ""
     }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
+            Text("${team.present.size} of ${team.players.size} here today", style = MaterialTheme.typography.titleMedium)
             Text(
-                "${state.present.size} of ${state.players.size} here today",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                "Uncheck kids who are absent. Turn off \"Goalie\" for anyone who shouldn't play in goal.",
+                "Uncheck kids who are absent. Tap a name to rename, set preferred positions, or turn off goalie.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        items(state.players, key = { it.id }) { p ->
-            val here = p.id !in state.absent
+        items(team.players, key = { it.id }) { p ->
+            val here = p.id !in team.absent
             Card(Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(start = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = here, onCheckedChange = {
-                        update(state.copy(absent = if (it) state.absent - p.id else state.absent + p.id))
+                Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = here, onCheckedChange = { checked ->
+                        updateTeam { it.copy(absent = if (checked) it.absent - p.id else it.absent + p.id) }
                     })
-                    Text(
-                        p.name,
-                        Modifier.weight(1f).clickable { renaming = p }.padding(vertical = 12.dp),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (here) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
-                    )
-                    FilterChip(
-                        selected = p.canPlayGoalie,
-                        onClick = {
-                            update(state.copy(players = state.players.map { if (it.id == p.id) it.copy(canPlayGoalie = !it.canPlayGoalie) else it }))
-                        },
-                        label = { Text("Goalie") },
-                    )
-                    IconButton(onClick = { deleting = p }) { Icon(Icons.Filled.Delete, "Remove ${p.name}") }
+                    Column(Modifier.weight(1f).clickable { editing = p }.padding(vertical = 10.dp)) {
+                        Text(
+                            p.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (here) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                        )
+                        val notes = buildList {
+                            val likes = p.preferred.filter { it in team.formation.fillOrder }.sortedBy { it.ordinal }
+                            if (likes.isNotEmpty()) add("Likes " + likes.joinToString { it.short })
+                            if (!p.canPlayGoalie) add("No goalie")
+                        }
+                        if (notes.isNotEmpty()) {
+                            Text(notes.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    IconButton(onClick = { editing = p }) { Icon(Icons.Filled.Edit, "Edit ${p.name}") }
                 }
             }
         }
@@ -138,11 +328,8 @@ private fun TeamScreen(state: AppState, update: (AppState) -> Unit) {
                     label = { Text("Add player") },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { add() }),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words,
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Done,
-                    ),
+                    keyboardActions = KeyboardActions(onDone = { add() }),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                 )
                 Spacer(Modifier.width(8.dp))
                 FilledIconButton(onClick = ::add) { Icon(Icons.Filled.Add, "Add") }
@@ -150,40 +337,95 @@ private fun TeamScreen(state: AppState, update: (AppState) -> Unit) {
         }
     }
 
-    renaming?.let { p ->
-        var text by remember(p.id) { mutableStateOf(p.name) }
-        AlertDialog(
-            onDismissRequest = { renaming = null },
-            title = { Text("Rename") },
-            text = { OutlinedTextField(text, { text = it }, singleLine = true) },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (text.isNotBlank()) {
-                        update(state.copy(players = state.players.map { if (it.id == p.id) it.copy(name = text.trim()) else it }))
-                    }
-                    renaming = null
-                }) { Text("Save") }
+    editing?.let { p ->
+        PlayerDialog(
+            player = p,
+            formation = team.formation,
+            onDismiss = { editing = null },
+            onSave = { updated ->
+                updateTeam { t -> t.copy(players = t.players.map { if (it.id == p.id) updated else it }) }
+                editing = null
             },
-            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } },
+            onDelete = {
+                updateTeam { t ->
+                    t.copy(players = t.players.filter { it.id != p.id }, absent = t.absent - p.id, season = t.season - p.id)
+                }
+                editing = null
+            },
         )
     }
+}
 
-    deleting?.let { p ->
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PlayerDialog(player: Player, formation: Formation, onDismiss: () -> Unit, onSave: (Player) -> Unit, onDelete: () -> Unit) {
+    var name by remember(player.id) { mutableStateOf(player.name) }
+    var goalie by remember(player.id) { mutableStateOf(player.canPlayGoalie) }
+    var preferred by remember(player.id) { mutableStateOf(player.preferred) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit player") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Can play goalie", Modifier.weight(1f))
+                    Switch(checked = goalie, onCheckedChange = {
+                        goalie = it
+                        if (!it) preferred = preferred - Position.GK
+                    })
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Preferred positions", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "The lineup puts them here whenever they're on the field. Leave empty to rotate everywhere.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    formation.positions.forEach { pos ->
+                        val on = pos in preferred
+                        FilterChip(
+                            selected = on,
+                            enabled = pos != Position.GK || goalie,
+                            onClick = { preferred = if (on) preferred - pos else preferred + pos },
+                            label = { Text(pos.label) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                TextButton(
+                    onClick = { confirmDelete = true },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("Remove from team") }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(player.copy(name = name.trim(), canPlayGoalie = goalie, preferred = preferred)) },
+                enabled = name.isNotBlank(),
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+
+    if (confirmDelete) {
         AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Remove ${p.name}?") },
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Remove ${player.name}?") },
             text = { Text("They'll be taken off the team and out of season totals.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    update(state.copy(
-                        players = state.players.filter { it.id != p.id },
-                        absent = state.absent - p.id,
-                        season = state.season - p.id,
-                    ))
-                    deleting = null
-                }) { Text("Remove") }
-            },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
 }
@@ -191,27 +433,31 @@ private fun TeamScreen(state: AppState, update: (AppState) -> Unit) {
 // ---------------------------------------------------------------- Lineup
 
 @Composable
-private fun GameScreen(state: AppState, update: (AppState) -> Unit, onShare: (String) -> Unit) {
-    val plan = state.plan
-    val names = state.players.associate { it.id to it.name }
-    var selected by remember { mutableStateOf<Pair<Int, RotationPlanner.Slot>?>(null) }
+private fun GameScreen(team: Team, updateTeam: ((Team) -> Team) -> Unit, onShare: (String) -> Unit) {
+    val plan = team.plan
+    val playersById = team.players.associateBy { it.id }
+    var selected by remember(team.id) { mutableStateOf<Pair<Int, RotationPlanner.Slot>?>(null) }
     var confirmNew by remember { mutableStateOf(false) }
     var confirmSave by remember { mutableStateOf(false) }
 
     fun makeLineup() {
         selected = null
-        update(state.copy(plan = RotationPlanner.generate(state.present, state.season), planSaved = false))
+        updateTeam {
+            it.copy(
+                plan = RotationPlanner.generate(it.present, it.formation, it.format.periods, it.season),
+                planSaved = false,
+            )
+        }
     }
 
-    val planIds = plan?.quarters?.firstOrNull()?.let { it.positions.values + it.bench }?.toSet()
-    val attendanceChanged = planIds != null && planIds != state.present.map { it.id }.toSet()
+    val attendanceChanged = plan != null && team.planPlayers.map { it.id }.toSet() != team.present.map { it.id }.toSet()
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(
-                    onClick = { if (plan == null || state.planSaved) makeLineup() else confirmNew = true },
-                    enabled = state.present.isNotEmpty(),
+                    onClick = { if (plan == null || team.planSaved) makeLineup() else confirmNew = true },
+                    enabled = team.present.isNotEmpty(),
                 ) {
                     Icon(Icons.Filled.Refresh, null)
                     Spacer(Modifier.width(6.dp))
@@ -219,13 +465,13 @@ private fun GameScreen(state: AppState, update: (AppState) -> Unit, onShare: (St
                 }
                 if (plan != null) {
                     OutlinedButton(onClick = {
-                        val title = "Lineup – " + DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date())
-                        onShare(RotationPlanner.asText(plan, state.players.filter { it.id in planIds.orEmpty() }, title))
+                        val title = "${team.name} – " + DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date())
+                        onShare(RotationPlanner.asText(plan, team.planPlayers, team.format, title))
                     }) { Icon(Icons.Filled.Share, "Share") }
-                    OutlinedButton(onClick = { confirmSave = true }, enabled = !state.planSaved && !attendanceChanged) {
+                    OutlinedButton(onClick = { confirmSave = true }, enabled = !team.planSaved && !attendanceChanged) {
                         Icon(Icons.Filled.Check, null)
                         Spacer(Modifier.width(6.dp))
-                        Text(if (state.planSaved) "Saved" else "Save game")
+                        Text(if (team.planSaved) "Saved" else "Save game")
                     }
                 }
             }
@@ -234,8 +480,8 @@ private fun GameScreen(state: AppState, update: (AppState) -> Unit, onShare: (St
         if (plan == null) {
             item {
                 Text(
-                    if (state.players.isEmpty()) "Add your players on the Team tab first."
-                    else "${state.present.size} players here. Tap Make lineup to build the four quarters.",
+                    if (team.players.isEmpty()) "Add your players on the Players tab first."
+                    else "${team.present.size} players here. Tap Make lineup to build the game.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -256,21 +502,21 @@ private fun GameScreen(state: AppState, update: (AppState) -> Unit, onShare: (St
 
         item {
             Text(
-                "Tap two players in the same quarter to swap them.",
+                "Tap two players in the same box to swap them. ★ = preferred spot.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        plan.quarters.forEachIndexed { qi, quarter ->
+        plan.periods.forEachIndexed { qi, period ->
             item(key = "q$qi") {
-                QuarterCard(qi, quarter, names, selected?.takeIf { it.first == qi }?.second) { slot ->
+                PeriodCard(team.format.periodName(qi), period, team.formation, playersById, selected?.takeIf { it.first == qi }?.second) { slot ->
                     val current = selected
                     selected = when {
                         current == null || current.first != qi -> qi to slot
                         current.second == slot -> null
                         else -> {
-                            update(state.copy(plan = RotationPlanner.swap(plan, qi, current.second, slot)))
+                            updateTeam { it.copy(plan = RotationPlanner.swap(plan, qi, current.second, slot)) }
                             null
                         }
                     }
@@ -278,7 +524,7 @@ private fun GameScreen(state: AppState, update: (AppState) -> Unit, onShare: (St
             }
         }
 
-        item { PlayTimeCard(plan, state.players.filter { it.id in planIds.orEmpty() }) }
+        item { PlayTimeCard(plan, team.planPlayers, team.format) }
     }
 
     if (confirmNew) {
@@ -297,8 +543,7 @@ private fun GameScreen(state: AppState, update: (AppState) -> Unit, onShare: (St
             text = { Text("Adds this lineup to the season totals, so future lineups give more time to kids who've sat more.") },
             confirmButton = {
                 TextButton(onClick = {
-                    val players = state.players.filter { it.id in planIds.orEmpty() }
-                    update(state.copy(season = RotationPlanner.record(plan, players, state.season), planSaved = true))
+                    updateTeam { it.copy(season = RotationPlanner.record(plan, it.planPlayers, it.season), planSaved = true) }
                     confirmSave = false
                 }) { Text("Save") }
             },
@@ -308,18 +553,20 @@ private fun GameScreen(state: AppState, update: (AppState) -> Unit, onShare: (St
 }
 
 @Composable
-private fun QuarterCard(
-    index: Int,
-    quarter: Quarter,
-    names: Map<Long, String>,
+private fun PeriodCard(
+    title: String,
+    period: Period,
+    formation: Formation,
+    players: Map<Long, Player>,
     selected: RotationPlanner.Slot?,
     onTap: (RotationPlanner.Slot) -> Unit,
 ) {
     @Composable
     fun RowScope.Spot(slot: RotationPlanner.Slot, label: String) {
-        val id = RotationPlanner.playerAt(quarter, slot)
+        val player = RotationPlanner.playerAt(period, slot)?.let { players[it] }
         val isSelected = slot == selected
         val isBench = slot is RotationPlanner.Slot.Bench
+        val liked = slot is RotationPlanner.Slot.Field && player != null && slot.position in player.preferred
         Surface(
             onClick = { onTap(slot) },
             modifier = Modifier.weight(1f).heightIn(min = 56.dp),
@@ -332,10 +579,14 @@ private fun QuarterCard(
             border = if (isSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
             Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    id?.let { names[it] } ?: "—",
+                    if (liked) "$label ★" else label,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    player?.name ?: "—",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
@@ -346,24 +597,26 @@ private fun QuarterCard(
         }
     }
 
-    val used = quarter.positions.keys
-    fun field(vararg ps: Position) = ps.filter { it in used }
+    // Laid out like the field: forwards on top, goalie at the bottom.
+    val rows = listOf(Line.FORWARD, Line.MIDFIELD, Line.DEFENSE, Line.GOAL).map { line ->
+        formation.positions.filter { it.line == line && it in period.positions }
+    }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Quarter ${index + 1}", style = MaterialTheme.typography.titleMedium)
-            // Laid out like the field: forwards on top, goalie at the bottom.
-            for (line in listOf(field(Position.LF, Position.CF, Position.RF), field(Position.LD, Position.RD), field(Position.GK))) {
-                if (line.isEmpty()) continue
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-                    if (line.size == 1) Spacer(Modifier.weight(1f))
-                    line.forEach { Spot(RotationPlanner.Slot.Field(it), it.short) }
-                    if (line.size == 1) Spacer(Modifier.weight(1f))
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            for (row in rows) {
+                if (row.isEmpty()) continue
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val pad = (3 - row.size).coerceAtLeast(0) / 2f
+                    if (pad > 0) Spacer(Modifier.weight(pad))
+                    row.forEach { Spot(RotationPlanner.Slot.Field(it), it.short) }
+                    if (pad > 0) Spacer(Modifier.weight(pad))
                 }
             }
-            if (quarter.bench.isNotEmpty()) {
+            if (period.bench.isNotEmpty()) {
                 HorizontalDivider()
-                quarter.bench.indices.chunked(3).forEach { chunk ->
+                period.bench.indices.chunked(3).forEach { chunk ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         chunk.forEach { Spot(RotationPlanner.Slot.Bench(it), "SITS") }
                         repeat(3 - chunk.size) { Spacer(Modifier.weight(1f)) }
@@ -375,21 +628,21 @@ private fun QuarterCard(
 }
 
 @Composable
-private fun PlayTimeCard(plan: GamePlan, players: List<Player>) {
+private fun PlayTimeCard(plan: GamePlan, players: List<Player>, format: GameFormat) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Play time", style = MaterialTheme.typography.titleMedium)
+            Text("Playing time (${format.unit})", style = MaterialTheme.typography.titleMedium)
             RotationPlanner.summarize(plan, players).forEach { s ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(players.first { it.id == s.playerId }.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        s.positions.joinToString("  ") { it?.short?.padEnd(2) ?: "–" },
+                        s.positions.joinToString(" ") { it?.short?.padEnd(2) ?: "– " },
                         Modifier.padding(horizontal = 8.dp),
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text("${s.quartersPlayed}/${plan.quarters.size}", fontWeight = FontWeight.Bold)
+                    Text("${s.periodsPlayed}/${plan.periods.size}", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -399,12 +652,12 @@ private fun PlayTimeCard(plan: GamePlan, players: List<Player>) {
 // ---------------------------------------------------------------- Season
 
 @Composable
-private fun SeasonScreen(state: AppState, update: (AppState) -> Unit) {
+private fun SeasonScreen(team: Team, updateTeam: ((Team) -> Team) -> Unit) {
     var confirmReset by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Text(
-                "Totals from saved games. New lineups give extra time to kids who've sat more, and spread goalie turns.",
+                "Totals from saved games for ${team.name}. New lineups give extra time to kids who've sat more, and spread goalie turns.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -418,8 +671,8 @@ private fun SeasonScreen(state: AppState, update: (AppState) -> Unit) {
             }
             HorizontalDivider(Modifier.padding(top = 4.dp))
         }
-        items(state.players, key = { it.id }) { p ->
-            val t = state.season[p.id] ?: SeasonTotals()
+        items(team.players, key = { it.id }) { p ->
+            val t = team.season[p.id] ?: SeasonTotals()
             Row {
                 Text(p.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 listOf(t.games, t.played, t.sat, t.goalie).forEach {
@@ -428,16 +681,23 @@ private fun SeasonScreen(state: AppState, update: (AppState) -> Unit) {
             }
         }
         item {
+            Text(
+                "Played and Sat count ${team.format.unit}.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(Modifier.height(16.dp))
-            OutlinedButton(onClick = { confirmReset = true }, enabled = state.season.isNotEmpty()) { Text("Reset season") }
+            OutlinedButton(onClick = { confirmReset = true }, enabled = team.season.isNotEmpty()) { Text("Reset season") }
         }
     }
     if (confirmReset) {
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset season totals?") },
-            text = { Text("This clears every player's games, quarters and goalie counts.") },
-            confirmButton = { TextButton(onClick = { update(state.copy(season = emptyMap())); confirmReset = false }) { Text("Reset") } },
+            text = { Text("This clears every player's games, playing time and goalie counts for ${team.name}.") },
+            confirmButton = {
+                TextButton(onClick = { updateTeam { it.copy(season = emptyMap()) }; confirmReset = false }) { Text("Reset") }
+            },
             dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
         )
     }

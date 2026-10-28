@@ -1,11 +1,15 @@
 # Soccer Rotation
 
-An Android app that builds a four-quarter lineup for a 6-on-field youth soccer team
-(goalie, left/right defense, left/center/right forward).
+An Android app that builds fair playing-time lineups for youth soccer teams.
 
-- **Team**: add players, check off who's here today, and mark who can play goalie.
-- **Lineup**: makes all four quarters at once. Play time is split as evenly as possible,
-  nobody sits two quarters in a row, goalie turns are spread out, and kids move between
+- **Teams**: keep several teams (tap the team name at the top to switch). Each has its
+  own players, formation (6v6, 7v7, or 9v9 in 3-3-2 / 3-2-3 / 2-3-3) and game format
+  (4 quarters, 2 halves, or halves with a mid-half swap).
+- **Players**: add players, check off who's here today, and tap a name to rename them,
+  mark who can't play goalie, or pick preferred positions. A kid with a preferred
+  position is put there whenever they're on the field.
+- **Lineup**: makes every period of the game at once. Play time is split as evenly as possible,
+  nobody sits twice in a row, goalie turns are spread out, and kids move between
   positions. Tap two players in a quarter to swap them. Share sends the lineup as text.
 - **Season**: tap **Save game** after a game and future lineups give extra time to kids
   who've sat more, and spread goalie turns across the season.
