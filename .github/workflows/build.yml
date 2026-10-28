@@ -37,10 +37,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/release/app-release.apk soccer-rotation.apk
+          cat > notes.md <<NOTES
+          **Use it in any phone's browser (iPhone or Android):** https://at2martin-commits.github.io/Soccer-Rotation/
+
+          **Android app:** download soccer-rotation.apk below and open it on your phone.
+
+          Built from ${GITHUB_SHA::7}.
+          NOTES
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest soccer-rotation.apk --target "$GITHUB_SHA" --latest \
-            --title "Soccer Rotation (latest)" --notes "**Use it in any phone's browser (iPhone or Android):** https://at2martin-commits.github.io/Soccer-Rotation/
-
-**Android app:** download soccer-rotation.apk below and open it on your phone.
-
-Built from ${GITHUB_SHA::7}."
+            --title "Soccer Rotation (latest)" --notes-file notes.md
