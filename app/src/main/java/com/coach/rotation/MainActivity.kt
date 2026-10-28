@@ -87,6 +87,8 @@ private fun App(storage: Storage, onShare: (String) -> Unit) {
                             team?.let {
                                 Text(
                                     "${it.formation.label} · ${it.format.label}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

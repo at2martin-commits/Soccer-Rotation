@@ -22,11 +22,11 @@ enum class Position(val label: String, val short: String, val line: Line) {
  * players show up, so the last entries are the first left empty.
  */
 enum class Formation(val label: String, val fillOrder: List<Position>) {
-    SIX_2_3("6v6 (2-3)", listOf(Position.GK, Position.LD, Position.RD, Position.CF, Position.LF, Position.RF)),
-    SEVEN_2_3_1("7v7 (2-3-1)", listOf(Position.GK, Position.LD, Position.RD, Position.CM, Position.CF, Position.LM, Position.RM)),
-    NINE_3_3_2("9v9 (3-3-2)", listOf(Position.GK, Position.CD, Position.LD, Position.RD, Position.CM, Position.LF, Position.RF, Position.LM, Position.RM)),
-    NINE_3_2_3("9v9 (3-2-3)", listOf(Position.GK, Position.CD, Position.LD, Position.RD, Position.LM, Position.RM, Position.CF, Position.LF, Position.RF)),
-    NINE_2_3_3("9v9 (2-3-3)", listOf(Position.GK, Position.LD, Position.RD, Position.CM, Position.CF, Position.LM, Position.RM, Position.LF, Position.RF));
+    SIX_2_3("6v6: 2 defense, 3 forward", listOf(Position.GK, Position.LD, Position.RD, Position.CF, Position.LF, Position.RF)),
+    SEVEN_2_3_1("7v7: 2 defense, 3 mid, 1 forward", listOf(Position.GK, Position.LD, Position.RD, Position.CM, Position.CF, Position.LM, Position.RM)),
+    NINE_3_3_2("9v9: 3 defense, 3 mid, 2 forward", listOf(Position.GK, Position.CD, Position.LD, Position.RD, Position.CM, Position.LF, Position.RF, Position.LM, Position.RM)),
+    NINE_3_2_3("9v9: 3 defense, 2 mid, 3 forward", listOf(Position.GK, Position.CD, Position.LD, Position.RD, Position.LM, Position.RM, Position.CF, Position.LF, Position.RF)),
+    NINE_2_3_3("9v9: 2 defense, 3 mid, 3 forward", listOf(Position.GK, Position.LD, Position.RD, Position.CM, Position.CF, Position.LM, Position.RM, Position.LF, Position.RF));
 
     val size get() = fillOrder.size
     val positions get() = Position.entries.filter { it in fillOrder }

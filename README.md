@@ -3,7 +3,7 @@
 An Android app that builds fair playing-time lineups for youth soccer teams.
 
 - **Teams**: keep several teams (tap the team name at the top to switch). Each has its
-  own players, formation (6v6, 7v7, or 9v9 in 3-3-2 / 3-2-3 / 2-3-3) and game format
+  own players, formation (6v6, 7v7, or 9v9 with 3 or 2 defenders) and game format
   (4 quarters, 2 halves, or halves with a mid-half swap).
 - **Players**: add players, check off who's here today, and tap a name to rename them,
   mark who can't play goalie, or pick preferred positions. A kid with a preferred
