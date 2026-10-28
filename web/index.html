@@ -1263,34 +1263,45 @@ function playerDialog(t, p) {
 function emailDialog(t, g) {
   const d = reportData(t, g);
   const subject = reportSubject(d);
-  const body = reportText(d);
+  const fileName = (d.title + " " + g.date).replace(/[^\w-]+/g, "-") + ".png";
+  // Used only when the phone can't share files: an email to attach the saved picture to.
   const mailHref = (to) => "mailto:" + encodeURIComponent(to.trim()).replace(/%40/g, "@") +
-    "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent("Playing time table attached.");
   openDialog(`<h2>Email league director</h2>
     <div class="report-preview">${reportHTML(d)}</div>
     <div class="group"><label class="lbl" for="director-email">League director's email</label>
       <input class="field" type="email" id="director-email" value="${esc(t.director || "")}" placeholder="director@example.org" autocomplete="email" inputmode="email"></div>
     <div class="email-actions">
-      <a class="btn primary" id="mail-link" href="${mailHref(t.director || "")}">${ICON.mail} Open email</a>
-      <button class="btn" type="button" data-d="picture">${ICON.share} Send as picture</button>
+      <button class="btn primary" type="button" data-d="picture">${ICON.mail} Email picture</button>
       <button class="btn" type="button" data-d="copy">Copy table</button>
     </div>
-    <p class="hint"><strong>Open email</strong> fills in the address, subject and playing time as text. <strong>Send as picture</strong> shares an image of the table to attach. <strong>Copy table</strong> lets you paste the table into an email.</p>
+    <p class="hint"><strong>Email picture</strong> copies the director's address and opens your share menu with a picture of the table. Pick Gmail or Mail, paste the address into To, and send.</p>
     <div id="picture-out" hidden></div>
     <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button></div>`, {
     picture: async () => {
       saveDirector();
+      const to = input.value.trim();
+      // Copy the address first, inside the tap, so it's ready to paste into To.
+      let copied = false;
+      if (to) { try { await navigator.clipboard.writeText(to); copied = true; } catch (e) {} }
       const canvas = reportCanvas(d);
       const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
-      const file = blob && new File([blob], (d.title + " " + g.date).replace(/[^\w-]+/g, "-") + ".png", { type: "image/png" });
+      const file = blob && new File([blob], fileName, { type: "image/png" });
       if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ files: [file], title: subject, text: subject }); return; }
-        catch (err) { if (err && err.name === "AbortError") return; }
+        try {
+          await navigator.share({ files: [file], title: subject, text: subject });
+          if (copied) toast("Paste the director's address into To");
+          return;
+        } catch (err) {
+          if (err && err.name === "AbortError") return;
+        }
       }
-      // No file sharing here: show the picture so it can be saved with a long press.
+      // This browser can't share files: show the picture to save, plus an email to attach it to.
       const out = dlg.querySelector("#picture-out");
       out.hidden = false;
-      out.innerHTML = `<p class="hint">Press and hold the picture to save or share it, then attach it to your email.</p><img alt="Playing time table" src="${canvas.toDataURL("image/png")}">`;
+      out.innerHTML = `<p class="hint">This browser can't attach the picture for you. Press and hold the picture to save it, then open the email and attach it.</p>
+        <img alt="Playing time table" src="${canvas.toDataURL("image/png")}">
+        <a class="btn full" href="${mailHref(to)}">${ICON.mail} Open email to ${esc(to || "the director")}</a>`;
       out.scrollIntoView({ block: "nearest" });
     },
     copy: async () => {
@@ -1298,24 +1309,20 @@ function emailDialog(t, g) {
       try {
         await navigator.clipboard.write([new ClipboardItem({
           "text/html": new Blob([reportHTML(d)], { type: "text/html" }),
-          "text/plain": new Blob([body], { type: "text/plain" }),
+          "text/plain": new Blob([reportText(d)], { type: "text/plain" }),
         })]);
         toast("Table copied. Paste it into your email.");
       } catch (e) {
-        try { await navigator.clipboard.writeText(body); toast("Copied as text"); }
-        catch (e2) { textDialog("Playing time", subject + "\n\n" + body); }
+        toast("Copying isn't available here. Use Email picture.");
       }
     },
   });
   const input = dlg.querySelector("#director-email");
-  const link = dlg.querySelector("#mail-link");
   function saveDirector() {
     const v = input.value.trim();
     if (v !== (t.director || "")) { t.director = v; commit(); }
   }
-  input.addEventListener("input", () => { link.href = mailHref(input.value); });
   input.addEventListener("change", saveDirector);
-  link.addEventListener("click", saveDirector);
 }
 
 function textDialog(title, text) {
