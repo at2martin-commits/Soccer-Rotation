@@ -621,11 +621,11 @@ function playersView(t) {
       <div><span class="count">${present(t).length} of ${t.players.length} here today</span></div>
       <p class="hint">Uncheck kids who are absent. Tap a name to rename them, set preferred positions, or turn off goalie.</p>
     </div>
-    <div class="roster">${rows}</div>
     <form class="add-row" data-form="add-player">
       <input class="field" id="add-name" name="name" placeholder="Add a player" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="New player name">
       <button class="btn primary" type="submit" aria-label="Add player">${ICON.plus} Add</button>
-    </form>`;
+    </form>
+    <div class="roster">${rows}</div>`;
 }
 
 function lineupView(t) {

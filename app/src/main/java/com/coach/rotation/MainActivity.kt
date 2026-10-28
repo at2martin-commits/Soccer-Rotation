@@ -61,7 +61,7 @@ private enum class Tab { TEAM, GAME, SEASON }
 /** null id = creating a new team. */
 private data class TeamEdit(val id: Long?)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun App(storage: Storage, onShare: (String) -> Unit) {
     var state by remember { mutableStateOf(storage.load()) }
@@ -130,7 +130,8 @@ private fun App(storage: Storage, onShare: (String) -> Unit) {
             }
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        // imePadding shrinks the content above the keyboard (the app draws edge to edge).
+        Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding().fillMaxSize()) {
             if (team == null) {
                 Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Create a team to get started.", textAlign = TextAlign.Center)
@@ -296,6 +297,22 @@ private fun PlayersScreen(team: Team, updateTeam: ((Team) -> Team) -> Unit, onAd
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // Kept above the list so it stays in view while the keyboard is open.
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Add player") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    keyboardActions = KeyboardActions(onDone = { add() }),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+                )
+                Spacer(Modifier.width(8.dp))
+                FilledIconButton(onClick = ::add) { Icon(Icons.Filled.Add, "Add") }
+            }
+        }
         items(team.players, key = { it.id }) { p ->
             val here = p.id !in team.absent
             Card(Modifier.fillMaxWidth()) {
@@ -320,21 +337,6 @@ private fun PlayersScreen(team: Team, updateTeam: ((Team) -> Team) -> Unit, onAd
                     }
                     IconButton(onClick = { editing = p }) { Icon(Icons.Filled.Edit, "Edit ${p.name}") }
                 }
-            }
-        }
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newName,
-                    onValueChange = { newName = it },
-                    label = { Text("Add player") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    keyboardActions = KeyboardActions(onDone = { add() }),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-                )
-                Spacer(Modifier.width(8.dp))
-                FilledIconButton(onClick = ::add) { Icon(Icons.Filled.Add, "Add") }
             }
         }
     }
