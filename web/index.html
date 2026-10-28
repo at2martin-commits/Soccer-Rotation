@@ -165,6 +165,7 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; mar
     linear-gradient(var(--chalk), var(--chalk)) center 0 / 100% 2px no-repeat,
     linear-gradient(var(--chalk), var(--chalk)) center calc(100% - 44px) / 46% 2px no-repeat;
 }
+.pitch.no-keeper::before { background: linear-gradient(var(--chalk), var(--chalk)) center 0 / 100% 2px no-repeat; }
 .prow { position: relative; display: flex; justify-content: center; gap: 8px; }
 .prow > .spot { flex: 0 1 calc((100% - 16px) / 3); }
 .spot {
@@ -358,6 +359,7 @@ const POS_ORDER = Object.keys(POS);
 
 // `fill` is the order spots are filled when not enough kids show up; the last ones are left empty first.
 const FORMATIONS = {
+  FIVE_2_1_2: { label: "5v5 (no goalie): 2 defense, 1 mid, 2 forward", fill: ["LD", "RD", "LF", "RF", "CM"] },
   SIX_2_3: { label: "6v6: 2 defense, 3 forward", fill: ["GK", "LD", "RD", "CF", "LF", "RF"] },
   SEVEN_2_3_1: { label: "7v7: 2 defense, 3 mid, 1 forward", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM"] },
   NINE_3_3_2: { label: "9v9: 3 defense, 3 mid, 2 forward", fill: ["GK", "CD", "LD", "RD", "CM", "LF", "RF", "LM", "RM"] },
@@ -365,6 +367,7 @@ const FORMATIONS = {
   NINE_2_3_3: { label: "9v9: 2 defense, 3 mid, 3 forward", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM", "LF", "RF"] },
 };
 const formationPositions = (f) => POS_ORDER.filter((k) => FORMATIONS[f].fill.includes(k));
+const hasGoalie = (f) => FORMATIONS[f].fill.includes("GK");
 
 const FORMATS = {
   QUARTERS: { label: "4 quarters", periods: 4, unit: "quarters" },
@@ -435,16 +438,18 @@ function candidate(players, fill, periods, season) {
     const positions = {};
 
     // Goalie: eligible kids with the fewest goalie turns, kids who like goal first, not the last goalie.
-    const goalie = playing.slice().sort(byKeys(
-      (p) => (p.goalie ? 0 : 1),
-      (p) => gk[p.id] * 2 - (p.preferred.includes("GK") ? 1 : 0),
-      (p) => (p.id === lastGoalie ? 1 : 0),
-      (p) => seasonOf(p).goalie || 0,
-    ))[0];
-    positions.GK = goalie.id;
-    gk[goalie.id]++;
-    playing = playing.filter((p) => p !== goalie);
-    lastGoalie = goalie.id;
+    if (onField.includes("GK")) {
+      const goalie = playing.slice().sort(byKeys(
+        (p) => (p.goalie ? 0 : 1),
+        (p) => gk[p.id] * 2 - (p.preferred.includes("GK") ? 1 : 0),
+        (p) => (p.id === lastGoalie ? 1 : 0),
+        (p) => seasonOf(p).goalie || 0,
+      ))[0];
+      positions.GK = goalie.id;
+      gk[goalie.id]++;
+      playing = playing.filter((p) => p !== goalie);
+      lastGoalie = goalie.id;
+    }
 
     // Field spots: each goes to whoever likes it, or has played it least.
     for (const pos of shuffle(onField.filter((k) => k !== "GK"))) {
@@ -867,7 +872,7 @@ function playersView(t) {
   const rows = t.players.map((p) => {
     const here = !t.absent.includes(p.id);
     const likes = POS_ORDER.filter((k) => p.preferred.includes(k) && FORMATIONS[t.formation].fill.includes(k)).map((k) => POS[k].short);
-    const notes = [likes.length ? "Likes " + likes.join(", ") : "", p.goalie ? "" : "No goalie"].filter(Boolean).join(" · ");
+    const notes = [likes.length ? "Likes " + likes.join(", ") : "", p.goalie || !hasGoalie(t.formation) ? "" : "No goalie"].filter(Boolean).join(" · ");
     return `
       <div class="player${here ? "" : " out"}">
         <label class="here"><input type="checkbox" id="here-${p.id}" data-action="toggle-here" data-id="${p.id}" ${here ? "checked" : ""} aria-label="${esc(p.name)} is here"></label>
@@ -881,7 +886,7 @@ function playersView(t) {
   return `
     <div class="panel">
       <div><span class="count">${present(t).length} of ${t.players.length} here today</span></div>
-      <p class="hint">Uncheck kids who are absent. Tap a name to rename them, set preferred positions, or turn off goalie.</p>
+      <p class="hint">Uncheck kids who are absent. Tap a name to rename them${hasGoalie(t.formation) ? ", set preferred positions, or turn off goalie" : " or set preferred positions"}.</p>
     </div>
     <form class="add-row" data-form="add-player">
       <input class="field" id="add-name" name="name" placeholder="Add a player" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="New player name">
@@ -992,7 +997,7 @@ function gameView(t, g) {
       : "";
     html += `<section class="panel period" aria-label="${esc(periodName(g.format, qi))}">
       <div class="period-head"><h2>${esc(periodName(g.format, qi))}</h2></div>
-      <div class="pitch">${rows}</div>${bench}</section>`;
+      <div class="pitch${q.positions.GK == null ? " no-keeper" : ""}">${rows}</div>${bench}</section>`;
   });
 
   if (g.goals.length) {
@@ -1021,17 +1026,18 @@ function seasonView(t) {
   const totals = seasonTotals(t);
   const played = t.games.filter((g) => g.played).length;
   const goals = goalsByPlayer(t.games);
+  const keeper = hasGoalie(t.formation);
   const rows = t.players.map((p) => {
     const s = totals[p.id] || { games: 0, played: 0, sat: 0, goalie: 0 };
-    return `<tr><td>${esc(p.name)}</td><td>${s.games}</td><td>${s.played}</td><td>${s.sat}</td><td>${s.goalie}</td><td>${goals[p.id] || 0}</td></tr>`;
+    return `<tr><td>${esc(p.name)}</td><td>${s.games}</td><td>${s.played}</td><td>${s.sat}</td>${keeper ? `<td>${s.goalie}</td>` : ""}<td>${goals[p.id] || 0}</td></tr>`;
   }).join("");
   return `
     <div class="panel">
       <h2>Season totals</h2>
-      <p class="hint">${played} ${played === 1 ? "game" : "games"} marked played for ${esc(t.name)}. New lineups give extra time to kids who've sat more, and spread goalie turns. Played and Sat count ${FORMATS[t.format].unit}. Goals count every game.</p>
+      <p class="hint">${played} ${played === 1 ? "game" : "games"} marked played for ${esc(t.name)}. New lineups give extra time to kids who've sat more${keeper ? ", and spread goalie turns" : ""}. Played and Sat count ${FORMATS[t.format].unit}. Goals count every game.</p>
       <div class="table-wrap"><table class="season">
-        <thead><tr><th>Player</th><th>Games</th><th>Played</th><th>Sat</th><th>Goalie</th><th>Goals</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="6">No players yet.</td></tr>`}</tbody>
+        <thead><tr><th>Player</th><th>Games</th><th>Played</th><th>Sat</th>${keeper ? "<th>Goalie</th>" : ""}<th>Goals</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${keeper ? 6 : 5}">No players yet.</td></tr>`}</tbody>
       </table></div>
     </div>
     <button class="btn" type="button" data-action="new-season" ${t.games.length || Object.keys(t.seasonCarry).length ? "" : "disabled"}>Start new season</button>`;
@@ -1209,7 +1215,7 @@ function playerDialog(t, p) {
   openDialog(`<h2>Edit player</h2>
     <div class="group"><label class="lbl" for="player-name-input">Name</label>
       <input class="field" id="player-name-input" value="${esc(p.name)}" autocapitalize="words"></div>
-    <label class="switch-row" for="player-goalie"><span>Can play goalie</span><input type="checkbox" id="player-goalie" ${p.goalie ? "checked" : ""}></label>
+    ${hasGoalie(t.formation) ? `<label class="switch-row" for="player-goalie"><span>Can play goalie</span><input type="checkbox" id="player-goalie" ${p.goalie ? "checked" : ""}></label>` : ""}
     <div class="group"><span class="lbl">Preferred positions</span>
       <p class="hint">The lineup puts them here whenever they're on the field. Leave empty to rotate everywhere.</p>
       <div class="chips" id="pref-chips">${chips()}</div></div>
@@ -1220,7 +1226,7 @@ function playerDialog(t, p) {
     </div>`, {
     pref: (b) => {
       const k = b.dataset.pos;
-      if (k === "GK" && !dlg.querySelector("#player-goalie").checked) return;
+      if (k === "GK" && goalieBox && !goalieBox.checked) return;
       preferred = preferred.includes(k) ? preferred.filter((x) => x !== k) : [...preferred, k];
       b.setAttribute("aria-pressed", String(preferred.includes(k)));
     },
@@ -1228,7 +1234,7 @@ function playerDialog(t, p) {
       const name = dlg.querySelector("#player-name-input").value.trim();
       if (!name) { dlg.querySelector("#player-name-input").focus(); return; }
       p.name = name;
-      p.goalie = dlg.querySelector("#player-goalie").checked;
+      if (goalieBox) p.goalie = goalieBox.checked;
       p.preferred = p.goalie ? preferred : preferred.filter((k) => k !== "GK");
       closeDialog();
       commit();
@@ -1251,11 +1257,11 @@ function playerDialog(t, p) {
   const goalieBox = dlg.querySelector("#player-goalie");
   const syncGoalieChip = () => {
     const chip = dlg.querySelector('[data-pos="GK"]');
-    if (!chip) return;
+    if (!chip || !goalieBox) return;
     chip.disabled = !goalieBox.checked;
     if (!goalieBox.checked) { preferred = preferred.filter((k) => k !== "GK"); chip.setAttribute("aria-pressed", "false"); }
   };
-  goalieBox.addEventListener("change", syncGoalieChip);
+  if (goalieBox) goalieBox.addEventListener("change", syncGoalieChip);
   syncGoalieChip();
 }
 
