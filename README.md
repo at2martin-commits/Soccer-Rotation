@@ -39,3 +39,9 @@ The whole app is `web/index.html`: plain HTML, CSS and JavaScript with no build 
 Pushing to `main` publishes it to GitHub Pages via `.github/workflows/pages.yml`.
 
 An earlier native Android version lives in the Git history (removed in favor of the web app).
+
+## Credits
+
+Created by Steven Martin, with Claude, an AI model made by Anthropic. © 2026 Steven Martin.
+The app uses Material Icons (Apache License 2.0) and the Barlow Condensed and Source Sans 3
+fonts (SIL Open Font License 1.1). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

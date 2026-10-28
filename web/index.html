@@ -223,7 +223,7 @@ dialog {
 dialog::backdrop { background: rgba(8, 14, 10, 0.55); }
 .dlg { display: grid; gap: 14px; padding: 18px; }
 .dlg h2 { font-size: 1.4rem; }
-.dlg label.lbl { font-weight: 700; font-size: 0.9rem; }
+.dlg .lbl { font-weight: 700; font-size: 0.9rem; }
 .dlg .group { display: grid; gap: 6px; }
 .choice { display: flex; align-items: center; gap: 10px; min-height: 40px; }
 .choice input { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; flex: none; }
@@ -298,6 +298,11 @@ textarea.field { width: 100%; min-height: 120px; font-family: ui-monospace, Menl
 .dlg .lbl .hint { font-weight: 400; display: inline; }
 .report-preview { overflow-x: auto; background: #ffffff; color: #18241c; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .email-actions { display: grid; gap: 8px; }
+.about-head { display: flex; align-items: center; gap: 12px; }
+.about-icon { width: 56px; height: 56px; border-radius: 14px; flex: none; }
+.about-p { margin: 0; }
+.dlg a { color: var(--accent); font-weight: 600; }
+.credits { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 0.92rem; }
 .how { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--muted); font-size: 0.9rem; }
 .how strong { color: var(--ink); }
 a.btn { text-decoration: none; color: inherit; }
@@ -938,6 +943,7 @@ function render() {
         <p class="hint">Add your players and game dates, check off who showed up, and get a lineup where every kid gets fair time on the field.</p>
         <button class="btn primary" type="button" data-action="new-team">${ICON.plus} Create a team</button>
         <button class="btn" type="button" data-action="sample-team">Try it with sample names</button>
+        <button class="back" type="button" data-action="about">About this app</button>
       </div>`;
     return;
   }
@@ -1261,6 +1267,7 @@ function teamMenu() {
   openDialog(`<h2>Teams</h2>
     <div class="team-list">${list}</div>
     <div class="dlg-actions">
+      <button class="btn" type="button" data-d="about">About</button>
       <button class="btn" type="button" data-d="backup">Back up or move data</button>
       ${t ? `<button class="btn" type="button" data-d="edit">${ICON.edit} Edit this team</button>` : ""}
       <button class="btn primary" type="button" data-d="new">${ICON.plus} New team</button>
@@ -1269,6 +1276,7 @@ function teamMenu() {
     edit: () => teamDialog(team()),
     new: () => teamDialog(null),
     backup: backupDialog,
+    about: aboutDialog,
   });
 }
 
@@ -1571,6 +1579,31 @@ function emailDialog(t, g) {
   input.addEventListener("change", saveDirector);
 }
 
+const APP_VERSION = "2026.10.28";
+const REPO_URL = "https://github.com/at2martin-commits/Soccer-Rotation";
+
+function aboutDialog() {
+  const link = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${esc(text)}</a>`;
+  openDialog(`<div class="about-head">
+      <img class="about-icon" alt="" src="${document.querySelector('link[rel="apple-touch-icon"]').href}">
+      <div><h2>Soccer Rotation</h2><p class="hint">Version ${APP_VERSION}</p></div>
+    </div>
+    <p>Fair playing-time lineups for youth soccer: rotations, goalies, schedules, goals and season totals.</p>
+    <div class="group"><span class="lbl">Created by</span>
+      <p class="about-p"><strong>Steven Martin</strong>, with <strong>Claude</strong>, an AI model made by Anthropic.</p>
+      <p class="hint">© 2026 Steven Martin. ${link(REPO_URL, "Source code on GitHub")}</p></div>
+    <div class="group"><span class="lbl">Your data</span>
+      <p class="hint">Teams, players and games are saved only on this device${window.claude ? ", or privately in your Claude account when opened from claude.ai" : ""}. The app doesn't collect or send your data anywhere. Fonts are loaded from Google Fonts.</p></div>
+    <div class="group"><span class="lbl">Open-source software</span>
+      <ul class="credits">
+        <li><strong>Material Icons</strong> by Google. Icons adapted from this set. ${link("https://www.apache.org/licenses/LICENSE-2.0", "Apache License 2.0")}</li>
+        <li><strong>Barlow Condensed</strong> font, © 2017 The Barlow Project Authors. ${link("https://openfontlicense.org", "SIL Open Font License 1.1")}</li>
+        <li><strong>Source Sans 3</strong> font, © 2010–2020 Adobe, with Reserved Font Name "Source". ${link("https://openfontlicense.org", "SIL Open Font License 1.1")}</li>
+      </ul>
+      <p class="hint">Full license texts: ${link(REPO_URL + "/blob/main/THIRD_PARTY_NOTICES.md", "third-party notices")}.</p></div>
+    <div class="dlg-actions"><button class="btn primary" type="button" data-d="cancel">Close</button></div>`);
+}
+
 function textDialog(title, text) {
   openDialog(`<h2>${esc(title)}</h2>
     <textarea class="field" id="share-text" readonly rows="12">${esc(text)}</textarea>
@@ -1692,6 +1725,9 @@ document.getElementById("main").addEventListener("click", async (e) => {
   switch (b.dataset.action) {
     case "new-team":
       teamDialog(null);
+      break;
+    case "about":
+      aboutDialog();
       break;
     case "sample-team": {
       const nt = newTeam("Sample team", "SIX_2_3", "QUARTERS");
