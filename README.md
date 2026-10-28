@@ -1,6 +1,12 @@
 # Soccer Rotation
 
-An Android app that builds fair playing-time lineups for youth soccer teams.
+An app that builds fair playing-time lineups for youth soccer teams.
+
+**Use it in your phone's browser:** https://at2martin-commits.github.io/Soccer-Rotation/
+(on iPhone, Share → Add to Home Screen; on Android, ⋮ → Add to Home screen)
+
+**Android app:** download `soccer-rotation.apk` from the
+[latest release](https://github.com/at2martin-commits/Soccer-Rotation/releases/latest).
 
 - **Teams**: keep several teams (tap the team name at the top to switch). Each has its
   own players, formation (6v6, 7v7, or 9v9 with 3 or 2 defenders) and game format
@@ -18,7 +24,7 @@ An Android app that builds fair playing-time lineups for youth soccer teams.
 
 `web/index.html` is the same app as a single web page, so it works in any phone's browser
 (including iPhone). It saves to the browser, or to your Claude account when opened from
-its claude.ai link. Its Teams menu has **Back up or move data** for copying everything to
+its claude.ai link. It's published to GitHub Pages by `.github/workflows/pages.yml`. Its Teams menu has **Back up or move data** for copying everything to
 another phone.
 
 ## Build

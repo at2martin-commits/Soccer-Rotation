@@ -39,4 +39,8 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk soccer-rotation.apk
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest soccer-rotation.apk --target "$GITHUB_SHA" --latest \
-            --title "Soccer Rotation (latest)" --notes "Built from ${GITHUB_SHA::7}. Download soccer-rotation.apk below and open it on your phone."
+            --title "Soccer Rotation (latest)" --notes "**Use it in any phone's browser (iPhone or Android):** https://at2martin-commits.github.io/Soccer-Rotation/
+
+**Android app:** download soccer-rotation.apk below and open it on your phone.
+
+Built from ${GITHUB_SHA::7}."
