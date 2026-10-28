@@ -1,13 +1,14 @@
 # Soccer Rotation
 
-A web app that builds fair playing-time lineups for youth soccer teams.
+A web app that builds fair playing-time lineups for youth soccer teams. Version 1.0.
 
 **Open it on any phone:** https://at2martin-commits.github.io/Soccer-Rotation/
 To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Android, ⋮ → Add to Home screen.
 
 - **Teams**: keep several teams (tap the team name at the top to switch). Each has its
-  own players, formation (4v4 or 5v5 with no goalie, 6v6, 7v7, or 9v9 with 3 or 2 defenders) and game format
-  (4 quarters, 2 halves, or halves with a mid-half swap).
+  own players, formation (4v4 or 5v5 with no goalie, 6v6, 7v7, or 9v9 with 3 or 2
+  defenders), game format (4 quarters, 2 halves, or halves with a mid-half swap) and
+  position setting (Rotate or Stick to positions).
 - **Players**: add players, check off who's here today, and tap a name to rename them,
   mark who can't play goalie, or pick preferred positions. A kid with a preferred
   position plays there more often (and nearby spots on the same line a bit more), but
@@ -32,10 +33,20 @@ To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Andr
 Each coach's teams are saved in their own phone's browser. Use **Back up or move data**
 in the team menu to keep a copy or move to another phone.
 
+## Privacy and security
+
+- Everything stays on the phone, in the browser's storage. The app has no server, no
+  accounts, no analytics and no tracking; the only thing it downloads is its two fonts.
+- The published page carries a Content Security Policy that lets it run only its own
+  script and load only those fonts, so it can't load anything else or send data anywhere.
+- Restored backups are checked field by field before use. Only restore backup text you
+  made yourself or got from someone you trust, since it contains your teams' names.
+
 ## Code
 
-The whole app is `web/index.html`: plain HTML, CSS and JavaScript with no build step.
-Pushing to `main` publishes it to GitHub Pages via `.github/workflows/pages.yml`.
+The whole app is `web/index.html`: plain HTML, CSS and JavaScript, with no libraries.
+Pushing to `main` publishes it to GitHub Pages via `.github/workflows/pages.yml`, which
+runs `tools/build-site.py` to add the doctype and the Content Security Policy.
 
 An earlier native Android version lives in the Git history (removed in favor of the web app).
 

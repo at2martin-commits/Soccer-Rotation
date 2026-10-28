@@ -3,7 +3,7 @@ name: Publish web app
 on:
   push:
     branches: [main]
-    paths: ["web/**", ".github/workflows/pages.yml"]
+    paths: ["web/**", "tools/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -24,12 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
-      # The page is written without a doctype (the claude.ai host adds its own); add one here
-      # so browsers use standards mode instead of quirks mode.
-      - name: Add doctype
-        run: |
-          mkdir -p site
-          { printf '<!doctype html>\n<html lang="en">\n'; cat web/index.html; } > site/index.html
+      # Adds a doctype and a Content Security Policy for the standalone copy (see the script).
+      - name: Build site
+        run: python3 tools/build-site.py
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
