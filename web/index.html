@@ -754,41 +754,87 @@ const longDate = (s) => toDate(s).toLocaleDateString(undefined, { weekday: "long
 
 // ------------------------------------------------------------------ State and saving
 
-const LOCAL_KEY = "soccer-rotation";
-let state = normalize(readLocal()) || { version: 3, nextId: 1, currentTeamId: null, teams: [], savedAt: 0 };
-let ui = { tab: state.teams.length ? "games" : "players", gameId: null, selected: null };
-let cloudRef = null, cloudTimer = null, cloudBusy = false, cloudPending = false;
-
-function readLocal() {
-  try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "null"); } catch (e) { return null; }
+// Saved data and restored backups are cleaned field by field: ids must be numbers, dates real
+// dates, positions real positions, and text is kept as plain text. Anything else is dropped, so
+// a hand-edited backup can't put markup or script into the page.
+const num = (v) => (v !== null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
+const text = (v, max = 80) => (v == null ? "" : String(v)).slice(0, max);
+const isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(toDate(v));
+const idList = (a) => (Array.isArray(a) ? a.map(num).filter((x) => x != null) : []);
+const plainObject = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
+function cleanPlan(plan) {
+  if (!Array.isArray(plan) || !plan.length) return null;
+  return plan.slice(0, 8).map((q) => ({
+    positions: Object.fromEntries(Object.entries(plainObject(q && q.positions))
+      .filter(([k, v]) => POS[k] && num(v) != null).map(([k, v]) => [k, num(v)])),
+    bench: idList(q && q.bench),
+  }));
 }
+function cleanNames(o) {
+  return Object.fromEntries(Object.entries(plainObject(o)).filter(([k]) => num(k) != null).map(([k, v]) => [num(k), text(v)]));
+}
+function cleanTotals(o) {
+  const n = (v) => Math.max(0, Math.round(num(v) || 0));
+  return Object.fromEntries(Object.entries(plainObject(o)).filter(([k]) => num(k) != null)
+    .map(([k, v]) => [num(k), { played: n(v && v.played), sat: n(v && v.sat), goalie: n(v && v.goalie), games: n(v && v.games) }]));
+}
+function cleanGame(g, t, newId) {
+  g = plainObject(g);
+  return {
+    id: num(g.id) ?? newId(),
+    date: isDate(g.date) ? g.date : todayStr(),
+    opponent: text(g.opponent),
+    plan: cleanPlan(g.plan),
+    formation: FORMATIONS[g.formation] ? g.formation : t.formation,
+    format: FORMATS[g.format] ? g.format : t.format,
+    played: !!g.played,
+    names: cleanNames(g.names),
+    goals: (Array.isArray(g.goals) ? g.goals : [])
+      .filter((x) => x && num(x.id) != null && Number.isInteger(num(x.p)) && num(x.p) >= 0)
+      .map((x) => ({ id: num(x.id), p: num(x.p) })),
+    ...(Array.isArray(g.absent) ? { absent: idList(g.absent) } : {}),
+  };
+}
+
 function normalize(s) {
-  if (!s || !Array.isArray(s.teams)) return null;
-  s.nextId = s.nextId || 1;
-  s.savedAt = s.savedAt || 0;
+  if (!s || typeof s !== "object" || !Array.isArray(s.teams)) return null;
+  // New ids start above every valid id already in the data, so they can't collide.
+  const seen = [];
   s.teams.forEach((t) => {
-    t.players = (t.players || []).map((p) => ({ id: p.id, name: p.name, goalie: p.goalie !== false, preferred: p.preferred || [] }));
-    t.absent = t.absent || [];
-    t.formation = FORMATIONS[t.formation] ? t.formation : "SIX_2_3";
-    t.format = FORMATS[t.format] ? t.format : "QUARTERS";
-    t.games = (t.games || []).map((g) => ({
-      id: g.id,
-      date: g.date || todayStr(),
-      opponent: g.opponent || "",
-      plan: g.plan || null,
-      formation: FORMATIONS[g.formation] ? g.formation : t.formation,
-      format: FORMATS[g.format] ? g.format : t.format,
-      played: !!g.played,
-      names: g.names || {},
-      goals: Array.isArray(g.goals) ? g.goals : [],
-      ...(Array.isArray(g.absent) ? { absent: g.absent } : {}),
-    }));
-    if (!t.seasonCarry) {
+    if (!t || typeof t !== "object") return;
+    const each = (list) => (Array.isArray(list) ? list : []).forEach((x) => x && num(x.id) != null && seen.push(num(x.id)));
+    if (num(t.id) != null) seen.push(num(t.id));
+    each(t.players); each(t.games); each(t.archives);
+    (Array.isArray(t.archives) ? t.archives : []).forEach((x) => x && each(x.games));
+  });
+  let nextId = Math.max(1, Math.round(num(s.nextId) || 1), ...seen.map((x) => x + 1));
+  const newId = () => nextId++;
+  const teams = s.teams.filter((t) => t && typeof t === "object").map((raw) => {
+    const t = {
+      id: num(raw.id) ?? newId(),
+      name: text(raw.name) || "Team",
+      formation: FORMATIONS[raw.formation] ? raw.formation : "SIX_2_3",
+      format: FORMATS[raw.format] ? raw.format : "QUARTERS",
+      director: text(raw.director, 200),
+      players: (Array.isArray(raw.players) ? raw.players : []).filter((p) => p && typeof p === "object").map((p) => ({
+        id: num(p.id) ?? newId(),
+        name: text(p.name) || "Player",
+        goalie: p.goalie !== false,
+        preferred: (Array.isArray(p.preferred) ? p.preferred : []).filter((k) => POS[k]),
+      })),
+      absent: idList(raw.absent),
+    };
+    if (STYLES[raw.style]) t.style = raw.style;
+    t.games = (Array.isArray(raw.games) ? raw.games : []).map((g) => cleanGame(g, t, newId));
+    if (raw.seasonCarry) {
+      t.seasonCarry = cleanTotals(raw.seasonCarry);
+    } else {
       // Version 2 kept a single lineup plus running season totals. The lineup becomes a game
       // dated today; totals from earlier saves are carried over without double-counting it.
-      const carry = JSON.parse(JSON.stringify(t.season || {}));
-      if (t.plan) {
-        const g = { id: s.nextId++, date: todayStr(), opponent: "", plan: t.plan, formation: t.formation, format: t.format, played: !!t.planSaved, names: {}, goals: [] };
+      const carry = cleanTotals(raw.season);
+      const plan = cleanPlan(raw.plan);
+      if (plan) {
+        const g = { id: newId(), date: todayStr(), opponent: "", plan, formation: t.formation, format: t.format, played: !!raw.planSaved, names: {}, goals: [] };
         if (g.played) {
           summarize(g.plan, planPlayers(t, g)).forEach((x) => {
             const c = carry[x.id];
@@ -803,18 +849,32 @@ function normalize(s) {
       }
       t.seasonCarry = carry;
     }
-    t.archives = (Array.isArray(t.archives) ? t.archives : []).map((a) => ({
-      ...a,
-      names: a.names || {},
-      carry: a.carry || {},
-      games: (a.games || []).map((g) => ({ ...g, goals: Array.isArray(g.goals) ? g.goals : [], names: g.names || {} })),
+    t.archives = (Array.isArray(raw.archives) ? raw.archives : []).filter((a) => a && typeof a === "object").map((a) => ({
+      id: num(a.id) ?? newId(),
+      name: text(a.name) || "Past season",
+      archivedAt: num(a.archivedAt) || Date.now(),
+      games: (Array.isArray(a.games) ? a.games : []).map((g) => cleanGame(g, t, newId)),
+      carry: cleanTotals(a.carry),
+      names: cleanNames(a.names),
     }));
-    delete t.plan;
-    delete t.planSaved;
-    delete t.season;
+    return t;
   });
-  s.version = 3;
-  return s;
+  return {
+    version: 3,
+    nextId,
+    currentTeamId: num(s.currentTeamId),
+    teams,
+    savedAt: num(s.savedAt) || 0,
+  };
+}
+
+const LOCAL_KEY = "soccer-rotation";
+let state = normalize(readLocal()) || { version: 3, nextId: 1, currentTeamId: null, teams: [], savedAt: 0 };
+let ui = { tab: state.teams.length ? "games" : "players", gameId: null, selected: null };
+let cloudRef = null, cloudTimer = null, cloudBusy = false, cloudPending = false;
+
+function readLocal() {
+  try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "null"); } catch (e) { return null; }
 }
 function commit() {
   state.savedAt = Date.now();
