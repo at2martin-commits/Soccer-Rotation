@@ -453,7 +453,8 @@ function candidate(players, fill, periods, season, stick) {
     if (onField.includes("GK")) {
       const goalie = playing.slice().sort(byKeys(
         (p) => (p.goalie ? 0 : 1),
-        (p) => (stick && p.preferred.includes("GK") ? -1 : gk[p.id] * 2 - (p.preferred.includes("GK") ? 1 : 0)),
+        // Stick: kids who like goal take it, sharing it evenly among themselves.
+        (p) => (stick && p.preferred.includes("GK") ? gk[p.id] - 100 : gk[p.id] * 2 - (p.preferred.includes("GK") ? 1 : 0)),
         (p) => (p.id === lastGoalie ? 1 : 0),
         (p) => seasonOf(p).goalie || 0,
       ))[0];
@@ -501,6 +502,11 @@ function score(plan, players, season, stick) {
   const gameLines = new Set(plan.flatMap((q) => Object.keys(q.positions).map((k) => POS[k].line)));
   const eligible = players.filter((p) => p.goalie);
   const fewestSeasonGoalie = eligible.length ? Math.min(...eligible.map((p) => (season[p.id] || {}).goalie || 0)) : 0;
+  if (stick) {
+    // Kids who like goal split it as evenly as their bench time allows.
+    const lovers = sums.filter((x, i) => players[i].preferred.includes("GK")).map((x) => x.positions.filter((k) => k === "GK").length);
+    if (lovers.length > 1) s += Math.max(0, Math.max(...lovers) - Math.min(...lovers) - 1) * 50;
+  }
   sums.forEach((x, i) => {
     const p = players[i];
     const likesGoal = p.preferred.includes("GK");
