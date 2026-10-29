@@ -405,7 +405,9 @@ const POS = {
   RCD: { label: "Right Center Defense", short: "RCD", line: "DEFENSE" },
   RD: { label: "Right Defense", short: "RD", line: "DEFENSE" },
   LM: { label: "Left Mid", short: "LM", line: "MIDFIELD" },
+  LCM: { label: "Left Center Mid", short: "LCM", line: "MIDFIELD" },
   CM: { label: "Center Mid", short: "CM", line: "MIDFIELD" },
+  RCM: { label: "Right Center Mid", short: "RCM", line: "MIDFIELD" },
   RM: { label: "Right Mid", short: "RM", line: "MIDFIELD" },
   LF: { label: "Left Forward", short: "LF", line: "FORWARD" },
   CF: { label: "Center Forward", short: "CF", line: "FORWARD" },
@@ -414,22 +416,30 @@ const POS = {
 const POS_ORDER = Object.keys(POS);
 
 // `fill` is the order spots are filled when not enough kids show up; the last ones are left empty first.
-// Teams pick a size (6v6 or 9v9); the formation is chosen per game, and can change each period.
-// 4v4, 5v5 and 7v7 are kept only so teams saved before that still work.
+// Teams pick a size (TEAM_SIZES); the formation is chosen per game, and can change each period.
+// The first formation of each size is the default. 5v5 is kept only so teams saved with it still work.
 const FORMATIONS = {
-  FOUR_2_2: { label: "4v4 (no goalie): 2 defense, 2 forward", fill: ["LD", "RD", "LF", "RF"] },
+  FOUR_2_2: { label: "4v4 (no goalie): 2 defense, 2 forward", hint: "Balanced", fill: ["LD", "RD", "LF", "RF"] },
+  FOUR_1_2_1: { label: "4v4 (no goalie): 1 defense, 2 mid, 1 forward", hint: "Diamond: a kid at the back, one up front", fill: ["CD", "CF", "LM", "RM"] },
   FIVE_2_1_2: { label: "5v5 (no goalie): 2 defense, 1 mid, 2 forward", fill: ["LD", "RD", "LF", "RF", "CM"] },
   SIX_2_3: { label: "6v6: 2 defense, 3 forward", hint: "Attacking", fill: ["GK", "LD", "RD", "CF", "LF", "RF"] },
   SIX_2_1_2: { label: "6v6: 2 defense, 1 mid, 2 forward", hint: "Balanced", fill: ["GK", "LD", "RD", "CM", "LF", "RF"] },
   SIX_3_2: { label: "6v6: 3 defense, 2 forward", hint: "Defensive, good for protecting a lead", fill: ["GK", "CD", "LD", "RD", "LF", "RF"] },
-  SEVEN_2_3_1: { label: "7v7: 2 defense, 3 mid, 1 forward", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM"] },
+  SEVEN_2_3_1: { label: "7v7: 2 defense, 3 mid, 1 forward", hint: "Balanced", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM"] },
+  SEVEN_2_2_2: { label: "7v7: 2 defense, 2 mid, 2 forward", hint: "Attacking", fill: ["GK", "LD", "RD", "LM", "RM", "LF", "RF"] },
+  SEVEN_3_2_1: { label: "7v7: 3 defense, 2 mid, 1 forward", hint: "Defensive, good for protecting a lead", fill: ["GK", "CD", "LD", "RD", "LM", "RM", "CF"] },
   NINE_3_3_2: { label: "9v9: 3 defense, 3 mid, 2 forward", hint: "Balanced", fill: ["GK", "CD", "LD", "RD", "CM", "LF", "RF", "LM", "RM"] },
   NINE_3_2_3: { label: "9v9: 3 defense, 2 mid, 3 forward", hint: "Attacking", fill: ["GK", "CD", "LD", "RD", "LM", "RM", "CF", "LF", "RF"] },
   NINE_2_3_3: { label: "9v9: 2 defense, 3 mid, 3 forward", hint: "All-out attack, for chasing a goal", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM", "LF", "RF"] },
   NINE_4_2_2: { label: "9v9: 4 defense, 2 mid, 2 forward", hint: "Defensive, still two up front", fill: ["GK", "LCD", "RCD", "LD", "RD", "LM", "RM", "LF", "RF"] },
   NINE_4_3_1: { label: "9v9: 4 defense, 3 mid, 1 forward", hint: "Most defensive, for protecting a lead", fill: ["GK", "LCD", "RCD", "LD", "RD", "CM", "CF", "LM", "RM"] },
+  ELEVEN_4_4_2: { label: "11v11: 4 defense, 4 mid, 2 forward", hint: "Balanced", fill: ["GK", "LCD", "RCD", "LD", "RD", "LCM", "RCM", "LF", "RF", "LM", "RM"] },
+  ELEVEN_4_3_3: { label: "11v11: 4 defense, 3 mid, 3 forward", hint: "Attacking", fill: ["GK", "LCD", "RCD", "LD", "RD", "CM", "CF", "LM", "RM", "LF", "RF"] },
+  ELEVEN_3_4_3: { label: "11v11: 3 defense, 4 mid, 3 forward", hint: "All-out attack, for chasing a goal", fill: ["GK", "CD", "LD", "RD", "LCM", "RCM", "CF", "LM", "RM", "LF", "RF"] },
+  ELEVEN_4_5_1: { label: "11v11: 4 defense, 5 mid, 1 forward", hint: "Defensive, crowds the middle", fill: ["GK", "LCD", "RCD", "LD", "RD", "CM", "CF", "LCM", "RCM", "LM", "RM"] },
+  ELEVEN_5_3_2: { label: "11v11: 5 defense, 3 mid, 2 forward", hint: "Most defensive, for protecting a lead", fill: ["GK", "CD", "LCD", "RCD", "LD", "RD", "CM", "LF", "RF", "LM", "RM"] },
 };
-const TEAM_SIZES = ["6v6", "9v9"];
+const TEAM_SIZES = ["4v4", "6v6", "7v7", "9v9", "11v11"];
 const sizeOf = (f) => FORMATIONS[f].label.split(/[ :]/)[0];
 const sizeFormations = (size) => Object.keys(FORMATIONS).filter((f) => sizeOf(f) === size);
 /** "3 defense, 3 mid, 2 forward", without the size. */
@@ -443,8 +453,8 @@ const STYLES = {
   rotate: { label: "Rotate positions", hint: "Kids move around so everyone tries forward and defense. Preferred spots get extra turns." },
   stick: { label: "Stick to positions", hint: "Kids stay in their preferred spot, or keep the spot they've been playing. More competitive." },
 };
-/** 9v9 defaults to sticking with positions; smaller games rotate. */
-const defaultStyle = (formation) => (formation.startsWith("NINE") ? "stick" : "rotate");
+/** 9v9 and 11v11 default to sticking with positions; smaller games rotate. */
+const defaultStyle = (formation) => (formation.startsWith("NINE") || formation.startsWith("ELEVEN") ? "stick" : "rotate");
 const teamStyle = (t) => (STYLES[t.style] ? t.style : defaultStyle(t.formation));
 
 const FORMATS = {
@@ -664,7 +674,7 @@ function swap(plan, qi, a, b) {
 }
 
 // Left-to-right place of each spot, for moving kids to the nearest spot in a new formation.
-const SIDE = { LD: 0, LM: 0, LF: 0, LCD: 0.35, CD: 0.5, CM: 0.5, CF: 0.5, RCD: 0.65, RD: 1, RM: 1, RF: 1 };
+const SIDE = { LD: 0, LM: 0, LF: 0, LCD: 0.35, LCM: 0.35, CD: 0.5, CM: 0.5, CF: 0.5, RCD: 0.65, RCM: 0.65, RD: 1, RM: 1, RF: 1 };
 const LINE_RANK = { DEFENSE: 0, MIDFIELD: 1, FORWARD: 2 };
 
 /**
@@ -982,6 +992,8 @@ function normalize(s) {
 }
 
 const LOCAL_KEY = "soccer-rotation";
+// The beta build (tools/build-site.py --beta) renames the storage key; that's how the page knows.
+const IS_BETA = LOCAL_KEY.endsWith("-beta");
 let state = normalize(readLocal()) || { version: 3, nextId: 1, currentTeamId: null, teams: [], savedAt: 0 };
 let ui = { tab: state.teams.length ? "games" : "players", gameId: null };
 let cloudRef = null, cloudTimer = null, cloudBusy = false, cloudPending = false;
@@ -1508,7 +1520,7 @@ function teamDialog(existing) {
     <label class="choice"><input type="radio" name="${name}" id="${name}-${k}" value="${k}" ${k === cur ? "checked" : ""}> ${esc(v.label)}</label>`).join("");
   // A team saved with an older size (4v4, 5v5, 7v7) keeps it as a choice.
   const sizes = TEAM_SIZES.includes(sizeOf(f)) ? TEAM_SIZES : [sizeOf(f), ...TEAM_SIZES];
-  const sizeOpts = Object.fromEntries(sizes.map((x) => [x, { label: x }]));
+  const sizeOpts = Object.fromEntries(sizes.map((x) => [x, { label: x + (hasGoalie(sizeFormations(x)[0]) ? "" : ", no goalie") }]));
   const hasOpenLineups = existing && existing.games.some((x) => x.plan && !x.played);
   openDialog(`<h2>${existing ? "Edit team" : "New team"}</h2>
     <div class="group"><label class="lbl" for="team-name-input">Team name</label>
@@ -1516,6 +1528,7 @@ function teamDialog(existing) {
     <div class="group"><span class="lbl">Players on the field</span>${radios("size", sizeOpts, sizeOf(f))}
       <p class="hint">You pick the formation for each game when you make its lineup.</p></div>
     <div class="group"><span class="lbl">Game</span>${radios("format", FORMATS, g)}</div>
+    ${IS_BETA && !existing ? `<label class="switch-row" for="beta-sample"><span>Beta: fill with sample players and an 8–10 game schedule<small class="choice-hint">For testing. Leave the name empty to call it "Sample" plus its size.</small></span><input type="checkbox" id="beta-sample"></label>` : ""}
     <div class="group"><span class="lbl">Positions</span>${Object.entries(STYLES).map(([k, v]) => `
       <label class="choice"><input type="radio" name="style" id="style-${k}" value="${k}" ${k === (existing ? teamStyle(existing) : defaultStyle(f)) ? "checked" : ""}>
         <span>${esc(v.label)}<small class="choice-hint">${esc(v.hint)}</small></span></label>`).join("")}</div>
@@ -1526,9 +1539,10 @@ function teamDialog(existing) {
       <button class="btn primary" type="button" data-d="save">Save</button>
     </div>`, {
     save: () => {
-      const name = dlg.querySelector("#team-name-input").value.trim();
-      if (!name) { dlg.querySelector("#team-name-input").focus(); return; }
+      const sample = !!(dlg.querySelector("#beta-sample") || {}).checked;
       const size = dlg.querySelector('input[name="size"]:checked').value;
+      const name = dlg.querySelector("#team-name-input").value.trim() || (sample ? "Sample " + size : "");
+      if (!name) { dlg.querySelector("#team-name-input").focus(); return; }
       const formation = size === sizeOf(f) ? f : sizeFormations(size)[0];
       const format = dlg.querySelector('input[name="format"]:checked').value;
       const style = dlg.querySelector('input[name="style"]:checked').value;
@@ -1542,6 +1556,7 @@ function teamDialog(existing) {
       } else {
         const t = newTeam(name, formation, format);
         t.style = style;
+        if (sample) fillSampleTeam(t);
         state.teams.push(t);
         state.currentTeamId = t.id;
         ui.tab = "players";
@@ -1857,6 +1872,29 @@ function toast(text) {
 // ------------------------------------------------------------------ Actions
 
 const SAMPLE_NAMES = ["Ava", "Ben", "Chloe", "Diego", "Emma", "Finn", "Grace", "Hiro"];
+const MORE_NAMES = ["Isla", "Jack", "Kenji", "Lucia", "Mateo", "Nora", "Omar", "Priya"];
+const SAMPLE_OPPONENTS = ["Tigers", "Sharks", "Comets", "Falcons", "Wildcats", "Rockets", "Hornets", "Dragons", "Lightning", "Storm"];
+
+/** Beta only: a roster sized for the team (about 1.5 times the field) and 8–10 weekly games. */
+function fillSampleTeam(t) {
+  const field = FORMATIONS[t.formation].fill.length;
+  const names = [...SAMPLE_NAMES, ...MORE_NAMES].slice(0, Math.min(16, Math.ceil(field * 1.5)));
+  const spots = formationPositions(t.formation).filter((k) => k !== "GK");
+  names.forEach((name, i) => t.players.push({
+    id: state.nextId++, name,
+    goalie: i !== 2, // one kid who doesn't play goal
+    preferred: i === 0 && hasGoalie(t.formation) ? ["GK"] : i === 1 ? [spots[spots.length - 1]] : i === 3 ? [spots[0]] : [],
+  }));
+  const games = 8 + Math.floor(Math.random() * 3);
+  const opponents = shuffle(SAMPLE_OPPONENTS.slice());
+  const sat = new Date(); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7)); // next Saturday
+  let side = Math.random() < 0.5 ? "home" : "away";
+  for (let i = 0; i < games; i++) {
+    t.games.push({ id: state.nextId++, date: addDays(dateStr(sat), i * 7), opponent: opponents[i], home: side,
+      plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] });
+    side = side === "home" ? "away" : "home";
+  }
+}
 
 document.getElementById("about-btn").addEventListener("click", aboutDialog);
 document.getElementById("team-btn").addEventListener("click", () => (state.teams.length ? teamMenu() : teamDialog(null)));

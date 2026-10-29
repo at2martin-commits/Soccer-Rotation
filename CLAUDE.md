@@ -49,7 +49,9 @@ asks for changes in plain words.
   Written **without** `<!doctype>`/`<head>` because the claude.ai viewer adds its own.
 - `tools/build-site.py`: builds the GitHub Pages copy: adds a doctype and a Content Security Policy
   (script pinned by sha256 hash, only Google Fonts allowed, no network). `--beta` adds the BETA tag,
-  "beta" version label and a separate storage key (`soccer-rotation-beta`).
+  "beta" version label and a separate storage key (`soccer-rotation-beta`). The app checks that key
+  (`IS_BETA`) to show beta-only tools: the "fill with sample players and an 8–10 game schedule" switch
+  on New team (`fillSampleTeam`).
 - `.github/workflows/pages.yml`: deploys `main` at `/` and `beta` at `/beta/`. `beta.yml`: on beta
   pushes, dispatches `pages.yml` on main (Pages only deploys from main).
 - `tests/run.js`: the browser test suite (`node tests/run.js`, ~45 s, preinstalled Playwright).
@@ -59,12 +61,13 @@ asks for changes in plain words.
 ## Inside web/index.html (sections, in order)
 
 1. **Soccer data**: `POS` (positions with line), `FORMATIONS` (label + `hint` + `fill` order; first
-   entries are filled first when kids are missing). Teams pick only a size (`TEAM_SIZES`: 6v6, 9v9;
-   4v4/5v5/7v7 stay only for old saved teams); the formation is asked per game on "Make lineup"
+   entries are filled first when kids are missing). Teams pick only a size (`TEAM_SIZES`: 4v4 no goalie,
+   6v6, 7v7, 9v9, 11v11; the first formation of each size is its default; 5v5 stays only for old
+   saved teams); the formation is asked per game on "Make lineup"
    (`formationDialog`), and `t.formation` remembers the last one used. Each period stores its own
    `formation` and can be switched from the pitch card (`changeFormation`: same kids on/off/in goal,
    others move to the nearest open spot). `FORMATS` (quarters / halves / halves with mid-half swap),
-   `STYLES` (`rotate`, `stick`; `defaultStyle` = stick for 9v9, rotate otherwise).
+   `STYLES` (`rotate`, `stick`; `defaultStyle` = stick for 9v9 and 11v11, rotate otherwise).
 2. **Lineup planner**: `generate(players, formation, periods, season, style)` makes `ATTEMPTS` (400)
    random candidates with `candidate()` and keeps the lowest `score()`. Rules, roughly by weight:
    equal playing time (hard), no-goalie kids never in goal, no sitting twice in a row, goalie turns

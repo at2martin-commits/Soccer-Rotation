@@ -227,7 +227,8 @@ async function flowTests(browser, scheme) {
   // Teams, formations, About.
   await p.click("#team-btn"); await p.click('[data-d="new"]');
   const sizes = await p.$$eval('.dlg input[name="size"]', (r) => r.map((x) => x.value));
-  check(sizes.join(",") === "6v6,9v9" && !(await p.$$('.dlg input[name="formation"]')).length, "new team picks only 6v6 or 9v9", sizes.join(","));
+  check(sizes.join(",") === "4v4,6v6,7v7,9v9,11v11" && !(await p.$$('.dlg input[name="formation"]')).length, "new team picks a size: 4v4 to 11v11", sizes.join(","));
+  check((await p.textContent('label:has(#size-4v4)')).includes("no goalie") && !(await p.$$("#beta-sample")).length, "4v4 says no goalie; no sample option outside beta");
   await p.fill("#team-name-input", "U12 Blaze"); await p.check("#size-9v9");
   const style9 = await p.$eval('input[name="style"]:checked', (x) => x.value);
   await p.click('[data-d="save"]');
@@ -319,6 +320,25 @@ async function safetyTests(browser) {
   const betaTeams = await m.page.evaluate(() => state.teams.length);
   const tag = await m.page.textContent(".beta-tag").catch(() => "");
   check(betaTeams === 0 && tag === "BETA", "beta copy has its own data and a BETA tag");
+  // Beta: a sample team of any size, with players and a schedule.
+  const want = { "4v4": [6, false], "6v6": [9, true], "7v7": [11, true], "9v9": [14, true], "11v11": [16, true] };
+  for (const [size, [kids, keeper]] of Object.entries(want)) {
+    await m.page.click("#team-btn");
+    if (await m.page.$('[data-d="new"]')) await m.page.click('[data-d="new"]');
+    await m.page.check("#size-" + size); await m.page.check("#beta-sample"); await m.page.click('[data-d="save"]');
+    const t = await m.page.evaluate(() => { const t = team(); return { name: t.name, kids: t.players.length, games: t.games.map((g) => [g.date, g.opponent, g.home]), formation: t.formation }; });
+    const weekly = t.games.every((g, i) => !i || (new Date(g[0]) - new Date(t.games[i - 1][0])) / 864e5 === 7);
+    const opps = new Set(t.games.map((g) => g[1])).size === t.games.length;
+    check(t.name === "Sample " + size && t.kids === kids && t.games.length >= 8 && t.games.length <= 10 && weekly && opps && t.games.every((g, i) => !i || g[2] !== t.games[i - 1][2]),
+      `beta sample ${size}: ${kids} kids, 8–10 weekly games, home/away alternate`, `${t.kids} kids, ${t.games.length} games`);
+    // Every size makes a full lineup in each of its formations.
+    const ok = await m.page.evaluate((keeper) => sizeFormations(sizeOf(team().formation)).every((f) => {
+      const plan = generate(present(team()), f, 4, {}, "rotate");
+      return plan.every((q) => Object.keys(q.positions).length === FORMATIONS[f].fill.length && (q.positions.GK != null) === keeper);
+    }), keeper);
+    check(ok, `${size} lineups fill every formation${keeper ? "" : " (no goalie)"}`);
+  }
+  check(!(await m.page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "beta: no sideways scrolling");
   await m.ctx.close();
 }
 
