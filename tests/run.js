@@ -100,9 +100,23 @@ async function plannerTests(browser) {
     let season = {};
     for (let g = 0; g < 7; g++) season = record(generate(ps, "SIX_2_3", 4, season), ps, season);
     res.season = Object.values(season).map((x) => x.sat);
+    // Changing formation mid-game: same kids on and off, spots from the new formation.
+    res.change = "ok";
+    for (const size of TEAM_SIZES) for (const a of sizeFormations(size)) for (const b of sizeFormations(size)) for (let n = 1; n <= 12; n++) {
+      const ps = team(n);
+      for (const q of generate(ps, a, 4, {}, "rotate")) {
+        const c = changeFormation(q, b, () => []);
+        const ids = (x) => Object.values(x.positions).sort().join();
+        if (c.formation !== b || ids(c) !== ids(q) || c.bench.join() !== q.bench.join() || c.positions.GK !== q.positions.GK ||
+          Object.keys(c.positions).sort().join() !== FORMATIONS[b].fill.slice(0, Object.keys(q.positions).length).sort().join()) {
+          res.change = `${a} → ${b}, ${n} kids`; break;
+        }
+      }
+    }
     return res;
   });
   check(r.structure === "ok", "lineups valid for every formation, size and style", r.structure);
+  check(r.change === "ok", "formation change keeps the same kids on, off and in goal", r.change);
   check(r.rotate.lfShare > 0.5 && r.rotate.lfShare < 0.9 && r.rotate.starved === 0, "rotate: preferred spot is a lean; everyone gets forward", `LF ${Math.round(r.rotate.lfShare * 100)}%, starved ${r.rotate.starved}`);
   check(r.stick === 1, "stick: preferred kids always in their spot", `${Math.round(r.stick * 100)}%`);
   check(r.goalie <= 1, "stick: goalie-lovers split goal evenly", `max gap ${r.goalie}`);
@@ -139,6 +153,9 @@ async function flowTests(browser, scheme) {
   // Lineup, swaps, goals.
   await p.click('.game-row:has-text("Tigers")');
   await p.click('[data-action="make-lineup"]');
+  const opts6 = await p.$$eval('.dlg input[name="formation"]', (r) => r.map((x) => x.value));
+  check(opts6.join(",") === "SIX_2_3,SIX_2_1_2,SIX_3_2", "make lineup asks for a 6v6 formation", opts6.join(","));
+  await p.click('[data-d="ok"]');
   const plan = await p.evaluate(() => state.teams[0].games.find((g) => g.opponent === "Tigers").plan);
   check(plan.length === 4 && plan.every((q) => ![...Object.values(q.positions), ...q.bench].includes(Number(diego))), "lineup made without the absent kid");
   const before = plan[0];
@@ -189,10 +206,45 @@ async function flowTests(browser, scheme) {
   check(archRows.length >= 8 && (await p.$$(".period")).length === 4 && !(await p.$$('.period [data-action]')).length, "archive keeps totals and read-only lineups");
   // Teams, formations, About.
   await p.click("#team-btn"); await p.click('[data-d="new"]');
-  await p.fill("#team-name-input", "U12 Blaze"); await p.check("#formation-NINE_3_3_2");
+  const sizes = await p.$$eval('.dlg input[name="size"]', (r) => r.map((x) => x.value));
+  check(sizes.join(",") === "6v6,9v9" && !(await p.$$('.dlg input[name="formation"]')).length, "new team picks only 6v6 or 9v9", sizes.join(","));
+  await p.fill("#team-name-input", "U12 Blaze"); await p.check("#size-9v9");
   const style9 = await p.$eval('input[name="style"]:checked', (x) => x.value);
   await p.click('[data-d="save"]');
   check(style9 === "stick" && (await p.textContent("#team-name")) === "U12 Blaze", "second team; 9v9 defaults to stick");
+  // Formation per game, and changing it during the game.
+  await p.evaluate(() => {
+    const t = team();
+    "Ava Ben Chloe Diego Emma Finn Grace Hiro Ines Jack Kai".split(" ").forEach((n) => t.players.push({ id: state.nextId++, name: n, goalie: true, preferred: [] }));
+    commit();
+  });
+  await p.click("#tab-games"); await p.click('[data-action="quick-game"]');
+  await p.click('[data-action="make-lineup"]');
+  check((await p.$$('.dlg input[name="formation"]')).length === 5, "9v9 offers five formations");
+  await p.check("#formation-NINE_3_2_3"); await p.click('[data-d="ok"]');
+  const g9 = await p.evaluate(() => team().games[0]);
+  check(g9.formation === "NINE_3_2_3" && g9.plan.every((q) => q.formation === "NINE_3_2_3" && Object.keys(q.positions).length === 9), "lineup uses the chosen formation");
+  check((await p.textContent(".period .form-btn")).includes("3 defense, 2 mid, 3 forward"), "each period shows its formation");
+  await p.click('[data-action="period-formation"][data-qi="3"]');
+  check(!(await p.$$("#formation-rest")).length, "last quarter has no rest-of-game box");
+  await p.check("#formation-NINE_4_3_1"); await p.click('[data-d="ok"]');
+  const g9b = await p.evaluate(() => ({ g: team().games[0], fill: FORMATIONS.NINE_4_3_1.fill }));
+  const [q3a, q3b] = [g9.plan[3], g9b.g.plan[3]];
+  const kids = (q) => Object.values(q.positions).sort().join();
+  check(q3b.formation === "NINE_4_3_1" && Object.keys(q3b.positions).sort().join() === g9b.fill.slice().sort().join() &&
+    kids(q3a) === kids(q3b) && q3a.bench.join() === q3b.bench.join() && q3a.positions.GK === q3b.positions.GK,
+    "4th quarter switches to 4 defense: same kids on, same kids sitting, same goalie");
+  check(["LD", "RD", "LM", "RM"].every((k) => q3a.positions[k] === q3b.positions[k]) &&
+    g9b.g.plan.slice(0, 3).every((q, i) => JSON.stringify(q) === JSON.stringify(g9.plan[i])),
+    "kids whose spot still exists keep it; earlier quarters untouched");
+  await p.click('[data-action="period-formation"][data-qi="1"]');
+  await p.check("#formation-NINE_3_3_2"); await p.click('[data-d="ok"]');
+  const forms = await p.evaluate(() => team().games[0].plan.map((q) => q.formation));
+  check(forms.join() === "NINE_3_2_3,NINE_3_3_2,NINE_3_3_2,NINE_3_3_2", "change from the 2nd quarter on", forms.join());
+  const short = await p.evaluate(() => changeFormation({ formation: "NINE_3_3_2", positions: { GK: 1, CD: 2, LD: 3, RD: 4, CM: 5, LF: 6 }, bench: [] }, "NINE_4_3_1", () => []));
+  check(Object.keys(short.positions).length === 6 && short.positions.GK === 1 && short.positions.LD === 3 && short.positions.RD === 4 && short.positions.CM === 5,
+    "short-handed: still fills the new formation's first spots", JSON.stringify(short.positions));
+  await p.click('[data-action="back"]');
   await p.click("#about-btn");
   check((await p.textContent(".dlg")).includes("Steven Martin"), "About credits");
   await p.click('[data-d="cancel"]');

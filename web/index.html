@@ -157,6 +157,13 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; mar
 .period-head { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 14px; }
 .period-head h2 { font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.04em; }
 .period-head { align-items: center; gap: 8px; }
+.form-btn {
+  display: flex; width: fit-content; align-items: center; gap: 6px; margin: -4px 14px 10px; min-height: 44px; padding: 0 14px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink);
+  font: inherit; font-weight: 600; font-size: 0.95rem; cursor: pointer;
+}
+.form-btn span { color: var(--muted); font-size: 0.8rem; }
+.form-note { margin: -6px 14px 10px; color: var(--muted); font-size: 0.9rem; }
 .opp-goal {
   min-height: 36px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
   font-weight: 700; font-size: 0.85rem; color: var(--muted); white-space: nowrap; max-width: 60%; overflow: hidden; text-overflow: ellipsis;
@@ -387,7 +394,9 @@ a.btn.primary { color: var(--accent-ink); }
 const POS = {
   GK: { label: "Goalie", short: "G", line: "GOAL" },
   LD: { label: "Left Defense", short: "LD", line: "DEFENSE" },
+  LCD: { label: "Left Center Defense", short: "LCD", line: "DEFENSE" },
   CD: { label: "Center Defense", short: "CD", line: "DEFENSE" },
+  RCD: { label: "Right Center Defense", short: "RCD", line: "DEFENSE" },
   RD: { label: "Right Defense", short: "RD", line: "DEFENSE" },
   LM: { label: "Left Mid", short: "LM", line: "MIDFIELD" },
   CM: { label: "Center Mid", short: "CM", line: "MIDFIELD" },
@@ -399,17 +408,31 @@ const POS = {
 const POS_ORDER = Object.keys(POS);
 
 // `fill` is the order spots are filled when not enough kids show up; the last ones are left empty first.
+// Teams pick a size (6v6 or 9v9); the formation is chosen per game, and can change each period.
+// 4v4, 5v5 and 7v7 are kept only so teams saved before that still work.
 const FORMATIONS = {
   FOUR_2_2: { label: "4v4 (no goalie): 2 defense, 2 forward", fill: ["LD", "RD", "LF", "RF"] },
   FIVE_2_1_2: { label: "5v5 (no goalie): 2 defense, 1 mid, 2 forward", fill: ["LD", "RD", "LF", "RF", "CM"] },
-  SIX_2_3: { label: "6v6: 2 defense, 3 forward", fill: ["GK", "LD", "RD", "CF", "LF", "RF"] },
+  SIX_2_3: { label: "6v6: 2 defense, 3 forward", hint: "Attacking", fill: ["GK", "LD", "RD", "CF", "LF", "RF"] },
+  SIX_2_1_2: { label: "6v6: 2 defense, 1 mid, 2 forward", hint: "Balanced", fill: ["GK", "LD", "RD", "CM", "LF", "RF"] },
+  SIX_3_2: { label: "6v6: 3 defense, 2 forward", hint: "Defensive, good for protecting a lead", fill: ["GK", "CD", "LD", "RD", "LF", "RF"] },
   SEVEN_2_3_1: { label: "7v7: 2 defense, 3 mid, 1 forward", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM"] },
-  NINE_3_3_2: { label: "9v9: 3 defense, 3 mid, 2 forward", fill: ["GK", "CD", "LD", "RD", "CM", "LF", "RF", "LM", "RM"] },
-  NINE_3_2_3: { label: "9v9: 3 defense, 2 mid, 3 forward", fill: ["GK", "CD", "LD", "RD", "LM", "RM", "CF", "LF", "RF"] },
-  NINE_2_3_3: { label: "9v9: 2 defense, 3 mid, 3 forward", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM", "LF", "RF"] },
+  NINE_3_3_2: { label: "9v9: 3 defense, 3 mid, 2 forward", hint: "Balanced", fill: ["GK", "CD", "LD", "RD", "CM", "LF", "RF", "LM", "RM"] },
+  NINE_3_2_3: { label: "9v9: 3 defense, 2 mid, 3 forward", hint: "Attacking", fill: ["GK", "CD", "LD", "RD", "LM", "RM", "CF", "LF", "RF"] },
+  NINE_2_3_3: { label: "9v9: 2 defense, 3 mid, 3 forward", hint: "All-out attack, for chasing a goal", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM", "LF", "RF"] },
+  NINE_4_2_2: { label: "9v9: 4 defense, 2 mid, 2 forward", hint: "Defensive, still two up front", fill: ["GK", "LCD", "RCD", "LD", "RD", "LM", "RM", "LF", "RF"] },
+  NINE_4_3_1: { label: "9v9: 4 defense, 3 mid, 1 forward", hint: "Most defensive, for protecting a lead", fill: ["GK", "LCD", "RCD", "LD", "RD", "CM", "CF", "LM", "RM"] },
 };
-const formationPositions = (f) => POS_ORDER.filter((k) => FORMATIONS[f].fill.includes(k));
+const TEAM_SIZES = ["6v6", "9v9"];
+const sizeOf = (f) => FORMATIONS[f].label.split(/[ :]/)[0];
+const sizeFormations = (size) => Object.keys(FORMATIONS).filter((f) => sizeOf(f) === size);
+/** "3 defense, 3 mid, 2 forward", without the size. */
+const formationName = (f) => FORMATIONS[f].label.split(": ")[1];
+/** Every spot any formation of this size uses, so preferred positions cover them all. */
+const formationPositions = (f) => POS_ORDER.filter((k) => sizeFormations(sizeOf(f)).some((x) => FORMATIONS[x].fill.includes(k)));
 const hasGoalie = (f) => FORMATIONS[f].fill.includes("GK");
+/** The formation a period is played in; lineups saved before per-period formations use the game's. */
+const periodFormation = (g, q) => (q.formation && FORMATIONS[q.formation] ? q.formation : g.formation);
 const STYLES = {
   rotate: { label: "Rotate positions", hint: "Kids move around so everyone tries forward and defense. Preferred spots get extra turns." },
   stick: { label: "Stick to positions", hint: "Kids stay in their preferred spot, or keep the spot they've been playing. More competitive." },
@@ -461,7 +484,7 @@ function generate(players, formation, periods, season, style = "rotate") {
     const s = score(plan, players, season, stick);
     if (s < bestScore) { best = plan; bestScore = s; }
   }
-  return best;
+  return best.map((q) => ({ formation, ...q }));
 }
 
 /** `stick`: kids keep their preferred spot (or the spot they've been playing) instead of rotating. */
@@ -631,7 +654,49 @@ function swap(plan, qi, a, b) {
     else if (id != null) bench[Number(key)] = id;
   };
   put(a, pb); put(b, pa);
-  return plan.map((x, i) => (i === qi ? { positions, bench } : x));
+  return plan.map((x, i) => (i === qi ? { ...q, positions, bench } : x));
+}
+
+// Left-to-right place of each spot, for moving kids to the nearest spot in a new formation.
+const SIDE = { LD: 0, LM: 0, LF: 0, LCD: 0.35, CD: 0.5, CM: 0.5, CF: 0.5, RCD: 0.65, RD: 1, RM: 1, RF: 1 };
+const LINE_RANK = { DEFENSE: 0, MIDFIELD: 1, FORWARD: 2 };
+
+/**
+ * Moves one period to another formation with the same kids on the field and the same kids
+ * sitting. Kids whose spot still exists keep it (the goalie stays in goal); the rest take the
+ * open spots nearest to where they were, leaning toward spots they like.
+ */
+function changeFormation(q, formation, prefsOf) {
+  const count = Object.keys(q.positions).length;
+  const spots = FORMATIONS[formation].fill.slice(0, count);
+  const positions = {};
+  const moving = [];
+  Object.entries(q.positions).forEach(([k, id]) => {
+    if (spots.includes(k)) positions[k] = id;
+    else moving.push({ id, from: k });
+  });
+  const open = spots.filter((k) => positions[k] == null);
+  const cost = (m, k) => {
+    if (k === "GK" || m.from === "GK") return 1000;
+    const pref = prefsOf(m.id);
+    return Math.abs(LINE_RANK[POS[k].line] - LINE_RANK[POS[m.from].line]) * 10 + Math.abs(SIDE[k] - SIDE[m.from]) * 3 -
+      (pref.includes(k) ? 4 : pref.some((x) => x !== "GK" && POS[x].line === POS[k].line) ? 1 : 0);
+  };
+  // At most a handful of kids move, so trying every way to seat them is quick.
+  let best = null, bestCost = Infinity;
+  const seat = (i, used, picks, total) => {
+    if (total >= bestCost) return;
+    if (i === moving.length) { best = picks.slice(); bestCost = total; return; }
+    open.forEach((k, j) => {
+      if (used & (1 << j)) return;
+      picks.push(k);
+      seat(i + 1, used | (1 << j), picks, total + cost(moving[i], k));
+      picks.pop();
+    });
+  };
+  seat(0, 0, [], 0);
+  moving.forEach((m, i) => { positions[best[i]] = m.id; });
+  return { ...q, formation, positions };
 }
 
 function lineupText(t, g) {
@@ -639,7 +704,7 @@ function lineupText(t, g) {
   const names = gameNames(t, g);
   const lines = [t.name + " – " + longDate(g.date) + (g.opponent ? " vs " + g.opponent : "") + (g.home ? " (" + SIDES[g.home] + ")" : "")];
   g.plan.forEach((q, i) => {
-    lines.push("", periodName(g.format, i));
+    lines.push("", periodName(g.format, i) + " (" + formationName(periodFormation(g, q)) + ")");
     POS_ORDER.forEach((k) => { if (q.positions[k] != null) lines.push("  " + POS[k].short + ": " + names[q.positions[k]]); });
     if (q.bench.length) lines.push("  Sits: " + q.bench.map((id) => names[id]).join(", "));
   });
@@ -806,6 +871,7 @@ function cleanPlan(plan) {
     positions: Object.fromEntries(Object.entries(plainObject(q && q.positions))
       .filter(([k, v]) => POS[k] && num(v) != null).map(([k, v]) => [k, num(v)])),
     bench: idList(q && q.bench),
+    ...(q && FORMATIONS[q.formation] ? { formation: q.formation } : {}),
   }));
 }
 function cleanNames(o) {
@@ -1042,7 +1108,7 @@ function render() {
   const t = team();
   document.getElementById("team-name").textContent = t ? t.name : "Soccer Rotation";
   document.getElementById("team-sub").textContent = t
-    ? FORMATIONS[t.formation].label + " · " + FORMATS[t.format].label + (teamStyle(t) === "stick" ? " · stick to positions" : "")
+    ? sizeOf(t.formation) + " · " + FORMATS[t.format].label + (teamStyle(t) === "stick" ? " · stick to positions" : "")
     : "Fair playing time, every game";
   document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === ui.tab)));
   const main = document.getElementById("main");
@@ -1066,7 +1132,7 @@ function render() {
 function playersView(t) {
   const rows = t.players.map((p) => {
     const here = !t.absent.includes(p.id);
-    const likes = POS_ORDER.filter((k) => p.preferred.includes(k) && FORMATIONS[t.formation].fill.includes(k)).map((k) => POS[k].short);
+    const likes = formationPositions(t.formation).filter((k) => p.preferred.includes(k)).map((k) => POS[k].short);
     const notes = [likes.length ? "Likes " + likes.join(", ") : "", p.goalie || !hasGoalie(t.formation) ? "" : "No goalie"].filter(Boolean).join(" · ");
     return `
       <div class="player${here ? "" : " out"}">
@@ -1205,9 +1271,15 @@ function periodsHTML(g, names, byId, interactive) {
     const bench = q.bench.length
       ? `<div class="bench"><span class="label">Sitting</span><div class="prow">${q.bench.map((_, i) => spot("B:" + i, "SITS")).join("")}</div></div>`
       : "";
+    const f = periodFormation(g, q);
+    const pickable = interactive && sizeFormations(sizeOf(f)).length > 1;
+    const formRow = pickable
+      ? `<button class="form-btn" type="button" data-action="period-formation" data-qi="${qi}" aria-label="Formation: ${esc(formationName(f))}. Tap to change">${esc(formationName(f))} <span aria-hidden="true">▾</span></button>`
+      : `<p class="form-note">${esc(formationName(f))}</p>`;
     html += `<section class="panel period" aria-label="${esc(periodName(g.format, qi))}">
       <div class="period-head"><h2>${esc(periodName(g.format, qi))}</h2>
         ${interactive ? `<button class="opp-goal" type="button" data-action="opp-goal" data-qi="${qi}">+ ${esc(oppName(g))} goal</button>` : ""}</div>
+      ${formRow}
       <div class="pitch${q.positions.GK == null ? " no-keeper" : ""}">${rows}</div>${bench}</section>`;
   });
   return html;
@@ -1407,7 +1479,7 @@ function teamMenu() {
   const t = team();
   const list = state.teams.map((x) => `
     <button class="team-pick" type="button" data-d="pick" data-id="${x.id}" aria-current="${t && x.id === t.id}">
-      <span><strong>${esc(x.name)}</strong><small>${esc(FORMATIONS[x.formation].label)} · ${esc(FORMATS[x.format].label)}</small></span>
+      <span><strong>${esc(x.name)}</strong><small>${esc(sizeOf(x.formation))} · ${esc(FORMATS[x.format].label)}</small></span>
       ${t && x.id === t.id ? ICON.check.replace("<svg", '<svg width="20" height="20"') : ""}
     </button>`).join("");
   openDialog(`<h2>Teams</h2>
@@ -1429,16 +1501,20 @@ function teamDialog(existing) {
   const g = existing ? existing.format : "QUARTERS";
   const radios = (name, opts, cur) => Object.entries(opts).map(([k, v]) => `
     <label class="choice"><input type="radio" name="${name}" id="${name}-${k}" value="${k}" ${k === cur ? "checked" : ""}> ${esc(v.label)}</label>`).join("");
+  // A team saved with an older size (4v4, 5v5, 7v7) keeps it as a choice.
+  const sizes = TEAM_SIZES.includes(sizeOf(f)) ? TEAM_SIZES : [sizeOf(f), ...TEAM_SIZES];
+  const sizeOpts = Object.fromEntries(sizes.map((x) => [x, { label: x }]));
   const hasOpenLineups = existing && existing.games.some((x) => x.plan && !x.played);
   openDialog(`<h2>${existing ? "Edit team" : "New team"}</h2>
     <div class="group"><label class="lbl" for="team-name-input">Team name</label>
       <input class="field" id="team-name-input" value="${existing ? esc(existing.name) : ""}" placeholder="e.g. U8 Thunder" autocapitalize="words" autofocus></div>
-    <div class="group"><span class="lbl">Players on the field</span>${radios("formation", FORMATIONS, f)}</div>
+    <div class="group"><span class="lbl">Players on the field</span>${radios("size", sizeOpts, sizeOf(f))}
+      <p class="hint">You pick the formation for each game when you make its lineup.</p></div>
     <div class="group"><span class="lbl">Game</span>${radios("format", FORMATS, g)}</div>
     <div class="group"><span class="lbl">Positions</span>${Object.entries(STYLES).map(([k, v]) => `
       <label class="choice"><input type="radio" name="style" id="style-${k}" value="${k}" ${k === (existing ? teamStyle(existing) : defaultStyle(f)) ? "checked" : ""}>
         <span>${esc(v.label)}<small class="choice-hint">${esc(v.hint)}</small></span></label>`).join("")}</div>
-    ${hasOpenLineups ? `<p class="hint">Changing the formation or game clears lineups for games not yet played. Played games keep theirs.</p>` : ""}
+    ${hasOpenLineups ? `<p class="hint">Changing players on the field or the game clears lineups for games not yet played. Played games keep theirs.</p>` : ""}
     <div class="dlg-actions">
       ${existing ? `<button class="btn danger" type="button" data-d="delete" style="margin-right:auto">Delete team</button>` : ""}
       <button class="btn" type="button" data-d="cancel">Cancel</button>
@@ -1447,12 +1523,13 @@ function teamDialog(existing) {
     save: () => {
       const name = dlg.querySelector("#team-name-input").value.trim();
       if (!name) { dlg.querySelector("#team-name-input").focus(); return; }
-      const formation = dlg.querySelector('input[name="formation"]:checked').value;
+      const size = dlg.querySelector('input[name="size"]:checked').value;
+      const formation = size === sizeOf(f) ? f : sizeFormations(size)[0];
       const format = dlg.querySelector('input[name="format"]:checked').value;
       const style = dlg.querySelector('input[name="style"]:checked').value;
       if (existing) {
         existing.style = style;
-        const keep = existing.formation === formation && existing.format === format;
+        const keep = sizeOf(existing.formation) === size && existing.format === format;
         Object.assign(existing, { name, formation, format });
         if (!keep) {
           existing.games.forEach((x) => { if (!x.played) x.plan = null; });
@@ -1484,11 +1561,33 @@ function teamDialog(existing) {
   });
   let styleTouched = !!(existing && existing.style);
   dlg.querySelectorAll('input[name="style"]').forEach((r) => r.addEventListener("change", () => { styleTouched = true; }));
-  dlg.querySelectorAll('input[name="formation"]').forEach((r) => r.addEventListener("change", () => {
+  dlg.querySelectorAll('input[name="size"]').forEach((r) => r.addEventListener("change", () => {
     if (styleTouched) return;
-    const pick = dlg.querySelector("#style-" + defaultStyle(r.value));
+    const pick = dlg.querySelector("#style-" + defaultStyle(sizeFormations(r.value)[0]));
     if (pick) pick.checked = true;
   }));
+}
+
+const periodWord = (format) => (format === "QUARTERS" ? "quarter" : format === "HALVES" ? "half" : "segment");
+
+/** Asks for a formation of the same size as `current`. `restLabel` adds a "rest of the game" box. */
+function formationDialog(title, hint, current, okLabel, restLabel, onOk) {
+  const opts = sizeFormations(sizeOf(current)).map((k) => `
+    <label class="choice"><input type="radio" name="formation" id="formation-${k}" value="${k}" ${k === current ? "checked" : ""}>
+      <span>${esc(formationName(k))}${FORMATIONS[k].hint ? `<small class="choice-hint">${esc(FORMATIONS[k].hint)}</small>` : ""}</span></label>`).join("");
+  openDialog(`<h2>${esc(title)}</h2>
+    <p class="hint">${esc(hint)}</p>
+    <div class="group">${opts}</div>
+    ${restLabel ? `<label class="switch-row" for="formation-rest"><span>${esc(restLabel)}</span><input type="checkbox" id="formation-rest" checked></label>` : ""}
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+      <button class="btn primary" type="button" data-d="ok">${esc(okLabel)}</button></div>`, {
+    ok: () => {
+      const formation = dlg.querySelector('input[name="formation"]:checked').value;
+      const rest = !!(dlg.querySelector("#formation-rest") || {}).checked;
+      closeDialog();
+      onOk(formation, rest);
+    },
+  });
 }
 
 function gameDialog(t, g) {
@@ -1851,15 +1950,39 @@ document.getElementById("main").addEventListener("click", async (e) => {
       gameDialog(t, g);
       break;
     case "make-lineup": {
-      const go = () => {
-        g.plan = generate(present(t), t.formation, FORMATS[t.format].periods, seasonTotals(t, g.id), teamStyle(t));
-        g.formation = t.formation;
+      const go = (formation) => {
+        g.plan = generate(present(t), formation, FORMATS[t.format].periods, seasonTotals(t, g.id), teamStyle(t));
+        g.formation = formation;
         g.format = t.format;
+        t.formation = formation; // offered first next game
         ui.selected = null;
         commit();
       };
-      if (g.plan) confirmDialog("Replace this lineup?", "Any swaps you made will be lost.", "Replace", go);
-      else go();
+      const choices = sizeFormations(sizeOf(t.formation));
+      if (choices.length < 2) {
+        if (g.plan) confirmDialog("Replace this lineup?", "Any swaps you made will be lost.", "Replace", () => go(t.formation));
+        else go(t.formation);
+      } else {
+        formationDialog("Formation for this game", `You can change it for any ${periodWord(t.format)} after, without moving kids on or off the bench.${g.plan ? " A new lineup replaces any swaps you made." : ""}`,
+          t.formation, g.plan ? "Make new lineup" : "Make lineup", null, go);
+      }
+      break;
+    }
+    case "period-formation": {
+      const qi = Number(b.dataset.qi);
+      const word = periodWord(g.format);
+      const later = g.plan.length - qi - 1;
+      formationDialog(periodName(g.format, qi) + " formation",
+        `Kids on the field stay on and kids sitting stay off. Only spots change: everyone moves to the nearest open spot.`,
+        periodFormation(g, g.plan[qi]), "Change formation",
+        later ? `Also use it for the rest of the game (${later} more ${later === 1 ? word : word + "s"})` : null,
+        (formation, rest) => {
+          const prefs = (id) => (t.players.find((p) => p.id === id) || { preferred: [] }).preferred;
+          g.plan = g.plan.map((q, i) => (i === qi || (rest && i > qi) ? changeFormation(q, formation, prefs) : q));
+          ui.selected = null;
+          commit();
+          toast(formationName(formation) + (rest && later ? " from " : " for ") + periodName(g.format, qi));
+        });
       break;
     }
     case "share": {

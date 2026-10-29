@@ -58,8 +58,12 @@ asks for changes in plain words.
 
 ## Inside web/index.html (sections, in order)
 
-1. **Soccer data**: `POS` (positions with line), `FORMATIONS` (label + `fill` order; first entries
-   are filled first when kids are missing), `FORMATS` (quarters / halves / halves with mid-half swap),
+1. **Soccer data**: `POS` (positions with line), `FORMATIONS` (label + `hint` + `fill` order; first
+   entries are filled first when kids are missing). Teams pick only a size (`TEAM_SIZES`: 6v6, 9v9;
+   4v4/5v5/7v7 stay only for old saved teams); the formation is asked per game on "Make lineup"
+   (`formationDialog`), and `t.formation` remembers the last one used. Each period stores its own
+   `formation` and can be switched from the pitch card (`changeFormation`: same kids on/off/in goal,
+   others move to the nearest open spot). `FORMATS` (quarters / halves / halves with mid-half swap),
    `STYLES` (`rotate`, `stick`; `defaultStyle` = stick for 9v9, rotate otherwise).
 2. **Lineup planner**: `generate(players, formation, periods, season, style)` makes `ATTEMPTS` (400)
    random candidates with `candidate()` and keeps the lowest `score()`. Rules, roughly by weight:
@@ -70,7 +74,7 @@ asks for changes in plain words.
      defense first. Kids who like goal get goal once per game first.
    - *stick*: preferred spot every period on the field; others keep their last spot/line; kids who
      like goal share goal evenly.
-   `summarize`, `record` (season totals), `swap`, `playerAt`. Slots are `"F:LD"` or `"B:0"`.
+   `summarize`, `record` (season totals), `swap`, `playerAt`, `changeFormation`. Slots are `"F:LD"` or `"B:0"`.
 3. **Share text / game summary**: `lineupText` (pre-game text share), `reportData` → `reportHTML`
    (preview) and `reportCanvas` (the PNG). The summary always lists: Team (Home/Away), Opponent,
    Score, Date, Game, then the playing-time table and absences.
@@ -85,7 +89,7 @@ asks for changes in plain words.
 
 Saved shape: `{version: 3, nextId, currentTeamId, savedAt, teams: [{id, name, formation, format,
 style?, players: [{id, name, goalie, preferred: [POS]}], absent: [id], games: [{id, date, opponent,
-home: ""|"home"|"away", plan: [{positions: {POS: id}, bench: [id]}], formation, format, played,
+home: ""|"home"|"away", plan: [{positions: {POS: id}, bench: [id], formation?}], formation, format, played,
 names: {id: name}, goals: [{id, p}], oppGoals: [{p}], absent?}], seasonCarry: {id: totals},
 archives: [{id, name, archivedAt, games, carry, names}]}]}`.
 
