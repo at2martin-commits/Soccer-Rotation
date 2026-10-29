@@ -59,7 +59,10 @@ asks for changes in plain words.
   on New team (`fillSampleTeam`).
 - `.github/workflows/pages.yml`: deploys `main` at `/` and `beta` at `/beta/`. `beta.yml`: on beta
   pushes, dispatches `pages.yml` on main (Pages only deploys from main).
-- `tests/run.js`: the browser test suite (`node tests/run.js`, ~45 s, preinstalled Playwright).
+- `tests/run.js`: the browser test suite (`node tests/run.js`, about 4 minutes, preinstalled
+  Playwright; run it in the background or with a long timeout). `node tests/run.js fair` (or
+  `planner`, `screens`, `iphone`, `safety`) runs one part. "Fair play" stress-tests every size,
+  formation and style with up to 8 extra kids and random favorites, plus 8-game seasons.
 - `THIRD_PARTY_NOTICES.md`: Material Icons (Apache 2.0, full text included), fonts (SIL OFL 1.1).
   If you add an icon, take it from Material Icons and add its name to the list there.
 
@@ -103,6 +106,9 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
 
 ## Rules for changes
 
+- **Check saved values against the app's tables with `known(TABLE, value)`**, never `TABLE[value]`
+  (that lets "constructor" or "__proto__" through). Ids go through `cleanId` (whole numbers under
+  1e12) and lists through `uniqueIds`; `cleanPlan` keeps each kid once per period.
 - **Any new saved field must be added to `normalize()` / `cleanGame()` with a type check**, and
   every place that builds a game object (search `goals: []`) must include new arrays, or older
   data and restored backups break.
@@ -127,6 +133,5 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
 
 ## Ideas offered but not built
 
-- Wins/losses/ties on the Season tab (scores are now tracked).
 - Moving the Goalie chip out of preferred positions into its own "Likes playing goalie" switch.
 - An app license (e.g. MIT) if he wants other clubs to reuse it.

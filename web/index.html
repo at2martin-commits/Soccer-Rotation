@@ -425,6 +425,8 @@ const POS = {
   RF: { label: "Right Forward", short: "RF", line: "FORWARD" },
 };
 const POS_ORDER = Object.keys(POS);
+/** True only for a table's own entries, so saved text like "constructor" or "__proto__" never counts as a known value. */
+const known = (table, k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(table, k);
 
 // `fill` is the order spots are filled when not enough kids show up; the last ones are left empty first.
 // Teams pick a size (TEAM_SIZES); the formation is chosen per game, and can change each period.
@@ -459,14 +461,14 @@ const formationName = (f) => FORMATIONS[f].label.split(": ")[1];
 const formationPositions = (f) => POS_ORDER.filter((k) => sizeFormations(sizeOf(f)).some((x) => FORMATIONS[x].fill.includes(k)));
 const hasGoalie = (f) => FORMATIONS[f].fill.includes("GK");
 /** The formation a period is played in; lineups saved before per-period formations use the game's. */
-const periodFormation = (g, q) => (q.formation && FORMATIONS[q.formation] ? q.formation : g.formation);
+const periodFormation = (g, q) => (known(FORMATIONS, q.formation) ? q.formation : g.formation);
 const STYLES = {
   rotate: { label: "Rotate positions", hint: "Kids move around so everyone tries forward and defense. Preferred spots get extra turns." },
   stick: { label: "Stick to positions", hint: "Kids stay in their preferred spot, or keep the spot they've been playing. More competitive." },
 };
 /** 9v9 and 11v11 default to sticking with positions; smaller games rotate. */
 const defaultStyle = (formation) => (formation.startsWith("NINE") || formation.startsWith("ELEVEN") ? "stick" : "rotate");
-const teamStyle = (t) => (STYLES[t.style] ? t.style : defaultStyle(t.formation));
+const teamStyle = (t) => (known(STYLES, t.style) ? t.style : defaultStyle(t.formation));
 
 const FORMATS = {
   QUARTERS: { label: "4 quarters", periods: 4, unit: "quarters" },
@@ -888,18 +890,27 @@ const longDate = (s) => toDate(s).toLocaleDateString(undefined, { weekday: "long
 // dates, positions real positions, and text is kept as plain text. Anything else is dropped, so
 // a hand-edited backup can't put markup or script into the page.
 const num = (v) => (v !== null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
+/** An id must be a whole number in a sane range, so new ids (largest + 1) never collide. */
+const cleanId = (v) => { const n = num(v); return n != null && Number.isSafeInteger(n) && n >= 0 && n < 1e12 ? n : null; };
+/** Keeps the first of any items that share an id. */
+const uniqueIds = (list) => { const ids = new Set(); return list.filter((x) => !ids.has(x.id) && ids.add(x.id)); };
 const text = (v, max = 80) => (v == null ? "" : String(v)).slice(0, max);
 const isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(toDate(v));
 const idList = (a) => (Array.isArray(a) ? a.map(num).filter((x) => x != null) : []);
 const plainObject = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
 function cleanPlan(plan) {
   if (!Array.isArray(plan) || !plan.length) return null;
-  return plan.slice(0, 8).map((q) => ({
-    positions: Object.fromEntries(Object.entries(plainObject(q && q.positions))
-      .filter(([k, v]) => POS[k] && num(v) != null).map(([k, v]) => [k, num(v)])),
-    bench: idList(q && q.bench),
-    ...(q && FORMATIONS[q.formation] ? { formation: q.formation } : {}),
-  }));
+  return plan.slice(0, 8).map((q) => {
+    // Each kid appears once per period: the first spot listed wins.
+    const used = new Set();
+    const once = (id) => !used.has(id) && used.add(id);
+    return {
+      positions: Object.fromEntries(Object.entries(plainObject(q && q.positions))
+        .filter(([k, v]) => known(POS, k) && num(v) != null && once(num(v))).map(([k, v]) => [k, num(v)])),
+      bench: idList(q && q.bench).filter(once),
+      ...(q && known(FORMATIONS, q.formation) ? { formation: q.formation } : {}),
+    };
+  });
 }
 function cleanNames(o) {
   return Object.fromEntries(Object.entries(plainObject(o)).filter(([k]) => num(k) != null).map(([k, v]) => [num(k), text(v)]));
@@ -912,13 +923,13 @@ function cleanTotals(o) {
 function cleanGame(g, t, newId) {
   g = plainObject(g);
   return {
-    id: num(g.id) ?? newId(),
+    id: cleanId(g.id) ?? newId(),
     date: isDate(g.date) ? g.date : todayStr(),
     opponent: text(g.opponent),
     home: g.home === "home" || g.home === "away" ? g.home : "",
     plan: cleanPlan(g.plan),
-    formation: FORMATIONS[g.formation] ? g.formation : t.formation,
-    format: FORMATS[g.format] ? g.format : t.format,
+    formation: known(FORMATIONS, g.formation) ? g.formation : t.formation,
+    format: known(FORMATS, g.format) ? g.format : t.format,
     played: !!g.played,
     names: cleanNames(g.names),
     goals: (Array.isArray(g.goals) ? g.goals : [])
@@ -937,29 +948,29 @@ function normalize(s) {
   const seen = [];
   s.teams.forEach((t) => {
     if (!t || typeof t !== "object") return;
-    const each = (list) => (Array.isArray(list) ? list : []).forEach((x) => x && num(x.id) != null && seen.push(num(x.id)));
-    if (num(t.id) != null) seen.push(num(t.id));
+    const each = (list) => (Array.isArray(list) ? list : []).forEach((x) => x && cleanId(x.id) != null && seen.push(cleanId(x.id)));
+    if (cleanId(t.id) != null) seen.push(cleanId(t.id));
     each(t.players); each(t.games); each(t.archives);
     (Array.isArray(t.archives) ? t.archives : []).forEach((x) => x && each(x.games));
   });
-  let nextId = Math.max(1, Math.round(num(s.nextId) || 1), ...seen.map((x) => x + 1));
+  let nextId = seen.reduce((m, x) => Math.max(m, x + 1), Math.max(1, cleanId(s.nextId) || 1));
   const newId = () => nextId++;
-  const teams = s.teams.filter((t) => t && typeof t === "object").map((raw) => {
+  const teams = uniqueIds(s.teams.filter((t) => t && typeof t === "object").map((raw) => {
     const t = {
-      id: num(raw.id) ?? newId(),
+      id: cleanId(raw.id) ?? newId(),
       name: text(raw.name) || "Team",
-      formation: FORMATIONS[raw.formation] ? raw.formation : "SIX_2_3",
-      format: FORMATS[raw.format] ? raw.format : "QUARTERS",
-      players: (Array.isArray(raw.players) ? raw.players : []).filter((p) => p && typeof p === "object").map((p) => ({
-        id: num(p.id) ?? newId(),
+      formation: known(FORMATIONS, raw.formation) ? raw.formation : "SIX_2_3",
+      format: known(FORMATS, raw.format) ? raw.format : "QUARTERS",
+      players: uniqueIds((Array.isArray(raw.players) ? raw.players : []).filter((p) => p && typeof p === "object").map((p) => ({
+        id: cleanId(p.id) ?? newId(),
         name: text(p.name) || "Player",
         goalie: p.goalie !== false,
-        preferred: (Array.isArray(p.preferred) ? p.preferred : []).filter((k) => POS[k]),
-      })),
+        preferred: [...new Set((Array.isArray(p.preferred) ? p.preferred : []).filter((k) => known(POS, k)))],
+      }))),
       absent: idList(raw.absent),
     };
-    if (STYLES[raw.style]) t.style = raw.style;
-    t.games = (Array.isArray(raw.games) ? raw.games : []).map((g) => cleanGame(g, t, newId));
+    if (known(STYLES, raw.style)) t.style = raw.style;
+    t.games = uniqueIds((Array.isArray(raw.games) ? raw.games : []).map((g) => cleanGame(g, t, newId)));
     if (raw.seasonCarry) {
       t.seasonCarry = cleanTotals(raw.seasonCarry);
     } else {
@@ -983,16 +994,16 @@ function normalize(s) {
       }
       t.seasonCarry = carry;
     }
-    t.archives = (Array.isArray(raw.archives) ? raw.archives : []).filter((a) => a && typeof a === "object").map((a) => ({
-      id: num(a.id) ?? newId(),
+    t.archives = uniqueIds((Array.isArray(raw.archives) ? raw.archives : []).filter((a) => a && typeof a === "object").map((a) => ({
+      id: cleanId(a.id) ?? newId(),
       name: text(a.name) || "Past season",
-      archivedAt: num(a.archivedAt) || Date.now(),
-      games: (Array.isArray(a.games) ? a.games : []).map((g) => cleanGame(g, t, newId)),
+      archivedAt: Number.isFinite(new Date(num(a.archivedAt)).getTime()) && num(a.archivedAt) > 0 ? num(a.archivedAt) : Date.now(),
+      games: uniqueIds((Array.isArray(a.games) ? a.games : []).map((g) => cleanGame(g, t, newId))),
       carry: cleanTotals(a.carry),
       names: cleanNames(a.names),
-    }));
+    })));
     return t;
-  });
+  }));
   return {
     version: 3,
     nextId,

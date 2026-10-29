@@ -30,6 +30,18 @@ for (const dir of [SITE, path.join(SITE, "beta")]) {
     fs.readFileSync(path.join(dir, "index.html"), "utf8").includes('<link rel="manifest" href="manifest.webmanifest">');
   check(ok, "home screen files built: manifest, icons, offline helper", path.relative(SITE, dir) || "regular");
 }
+{
+  // The published page stays locked down: one script, no inline handlers, no network.
+  const html = fs.readFileSync(path.join(SITE, "index.html"), "utf8");
+  const csp = (html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/) || [])[1] || "";
+  const sw = fs.readFileSync(path.join(SITE, "sw.js"), "utf8");
+  check(["default-src 'none'", "connect-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'", "script-src 'sha256-"].every((x) => csp.includes(x)) &&
+    !/unsafe-eval|script-src[^;]*unsafe-inline|script-src[^;]*https?:/.test(csp), "strict Content Security Policy", csp.slice(0, 60));
+  check((html.match(/<script/g) || []).length === 1 && !/\son[a-z]+\s*=\s*["']/i.test(html.replace(/<script>[\s\S]*<\/script>/, "")) &&
+    !/\b(fetch|XMLHttpRequest|WebSocket|sendBeacon|eval)\s*\(|new Function/.test(html.match(/<script>([\s\S]*)<\/script>/)[1]),
+    "one inline script, no inline handlers, no network calls or eval");
+  check(/url\.origin !== location\.origin/.test(sw) && !/importScripts|eval/.test(sw), "offline helper only handles the app's own files and fonts");
+}
 
 async function openApp(browser, { scheme = "light", url = MAIN, share = true } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: scheme, acceptDownloads: true });
@@ -324,6 +336,29 @@ async function safetyTests(browser) {
   const ids = [st.teams[0].id, ...st.teams[0].players.map((x) => x.id), ...st.teams[0].games.map((g) => g.id)];
   check(!(await p.evaluate(() => window.__pwned)) && !(await p.$$("main img:not(.install-icon), [onerror]")).length, "hostile backup can't run code or inject markup");
   check(ids.every(Number.isFinite) && new Set(ids).size === ids.length, "restored ids cleaned and unique", JSON.stringify(ids));
+  // Built-in names, huge and repeated ids, and one kid in two spots can't break or confuse the app.
+  const tricky = await p.evaluate(() => {
+    const s = normalize({ nextId: 1e300, teams: [{ id: 5, name: "T", formation: "constructor", format: "toString", style: "__proto__",
+      players: [{ id: 7, name: "A", preferred: ["constructor", "LF", "LF", "__proto__"] }, { id: 7, name: "Copy" }, { id: 1e300, name: "Huge" }, { id: 8, name: "B" }],
+      games: [{ id: 9, date: "2026-03-01", formation: "valueOf", format: "hasOwnProperty", played: true,
+        plan: [{ positions: { GK: 7, LD: 7, constructor: 8, toString: 8, RD: 8 }, bench: [8, 7], formation: "__proto__" }], goals: [], oppGoals: [] },
+        { id: 9, date: "2026-03-02", plan: null }],
+      archives: [{ id: 11, name: "Old", archivedAt: 1e300, games: [] }] }] });
+    const t = s.teams[0], q = t.games[0].plan[0];
+    const fresh = [1, 2, 3].map(() => s.nextId++);
+    return {
+      ok: t.formation === "SIX_2_3" && t.format === "QUARTERS" && !("style" in t) && t.games[0].formation === "SIX_2_3" && t.games[0].format === "QUARTERS",
+      prefs: t.players[0].preferred.join(),
+      players: t.players.map((x) => x.id), games: t.games.length,
+      ids: [t.id, ...t.players.map((x) => x.id), ...t.games.map((x) => x.id), ...t.archives.map((x) => x.id), ...fresh],
+      period: JSON.stringify(q), date: new Date(t.archives[0].archivedAt).getFullYear(),
+      renders: (() => { state = s; state.currentTeamId = t.id; ui.tab = "games"; ui.gameId = t.games[0].id; render(); ui.tab = "season"; ui.gameId = null; render(); return true; })(),
+    };
+  });
+  check(tricky.ok && tricky.prefs === "LF", "built-in names like \"constructor\" aren't taken as formations, formats or positions", tricky.prefs);
+  check(new Set(tricky.ids).size === tricky.ids.length && tricky.ids.every((x) => Number.isSafeInteger(x) && x < 1e12) && tricky.games === 1 && tricky.players.length === 3,
+    "huge or repeated ids are replaced or dropped; new ids stay unique", JSON.stringify(tricky.ids));
+  check(tricky.period === '{"positions":{"GK":7,"RD":8},"bench":[]}' && tricky.date > 2000 && tricky.renders, "a kid can't be in two spots at once; bad dates replaced; still draws", tricky.period);
   check(st.teams[0].games[0].home === "" && /^\d{4}-\d{2}-\d{2}$/.test(st.teams[0].games[0].date), "bad dates and home/away replaced");
   // Data from older versions upgrades.
   await p.evaluate(() => localStorage.setItem("soccer-rotation", JSON.stringify({ version: 2, nextId: 30, currentTeamId: 1, savedAt: 1, teams: [{ id: 1, name: "Old", formation: "SIX_2_3", format: "QUARTERS",
@@ -364,6 +399,119 @@ async function safetyTests(browser) {
   await m.ctx.close();
 }
 
+// ---------------------------------------------------------------- Fair play under stress
+// Every team size and formation, both position styles, rosters from exactly full to 8 extra
+// kids, random favorite positions and kids who can't play goal; then whole seasons.
+
+async function fairnessTests(browser) {
+  console.log("Fair play");
+  const { ctx, page, problems } = await openApp(browser);
+  const r = await page.evaluate(() => {
+    const res = { time: [], twice: [], goalie: [], once: [], favs: { hit: 0, tot: 0 }, change: [], season: [], seasonGoalie: [], runs: 0 };
+    const pick = (a) => a[Math.floor(Math.random() * a.length)];
+    const roster = (n, f) => {
+      const spots = formationPositions(f);
+      return Array.from({ length: n }, (_, i) => {
+        const prefs = Math.random() < 0.6 ? [...new Set([pick(spots), ...(Math.random() < 0.3 ? [pick(spots)] : [])])] : [];
+        // At least two kids can play goal; about a quarter can't.
+        return { id: i + 1, name: "K" + i, goalie: i < 2 || Math.random() > 0.25, preferred: prefs };
+      });
+    };
+    for (const size of TEAM_SIZES) for (const f of sizeFormations(size)) for (const style of ["rotate", "stick"]) for (const periods of [2, 4]) {
+      const field = FORMATIONS[f].fill.length;
+      for (let extra = 0; extra <= 8; extra++) for (let rep = 0; rep < 2; rep++) {
+        const ps = roster(field + extra, f);
+        const plan = generate(ps, f, periods, {}, style);
+        res.runs++;
+        const tag = `${f} ${style} ${periods}p ${ps.length} kids`;
+        const sums = summarize(plan, ps);
+        const played = sums.map((x) => x.played);
+        if (Math.max(...played) - Math.min(...played) > 1) res.time.push(`${tag}: ${played}`);
+        for (const q of plan) {
+          const all = [...Object.values(q.positions), ...q.bench];
+          if (all.length !== ps.length || new Set(all).size !== ps.length) res.once.push(tag);
+          const gk = ps.find((p) => p.id === q.positions.GK);
+          if (gk && !gk.goalie) res.goalie.push(tag);
+        }
+        // Sitting twice in a row is avoidable whenever at most half the roster sits.
+        const bench = plan[0].bench.length;
+        if (bench * 2 <= ps.length) sums.forEach((x) => { for (let j = 1; j < x.positions.length; j++) if (!x.positions[j] && !x.positions[j - 1]) res.twice.push(tag); });
+        // Stick: kids whose favorite spot is in this formation, and nobody else's favorite, get it
+        // whenever they're on the field.
+        if (style === "stick") {
+          const claims = {};
+          ps.forEach((p) => p.preferred.forEach((k) => { claims[k] = (claims[k] || 0) + 1; }));
+          sums.forEach((x, i) => {
+            const own = ps[i].preferred.filter((k) => k !== "GK" && claims[k] === 1 && FORMATIONS[f].fill.includes(k));
+            if (own.length !== 1 || ps[i].preferred.length !== 1) return;
+            x.positions.forEach((k) => { if (k && k !== "GK") { res.favs.tot++; if (k === own[0]) res.favs.hit++; } });
+          });
+        }
+        // Switching formation mid-game never changes anyone's playing time.
+        const other = pick(sizeFormations(size));
+        const changed = plan.map((q, i) => (i >= plan.length / 2 ? changeFormation(q, other, (id) => ps[id - 1].preferred) : q));
+        if (summarize(changed, ps).some((x, i) => x.played !== played[i])) res.change.push(`${tag} → ${other}`);
+      }
+    }
+    // Seasons: 8 games, same roster with extras; sitting and goalie turns even out over time.
+    for (const [f, n] of [["SIX_2_3", 9], ["SEVEN_2_3_1", 11], ["NINE_3_3_2", 13], ["ELEVEN_4_4_2", 16], ["FOUR_2_2", 7]]) for (const style of ["rotate", "stick"]) {
+      const ps = roster(n, f).map((p) => ({ ...p, goalie: true, preferred: p.preferred.filter((k) => k !== "GK") }));
+      let season = {};
+      for (let g = 0; g < 8; g++) season = record(generate(ps, f, 4, season, style), ps, season);
+      const sat = ps.map((p) => season[p.id].sat), gk = ps.map((p) => season[p.id].goalie);
+      if (Math.max(...sat) - Math.min(...sat) > 1) res.season.push(`${f} ${style}: sat ${sat}`);
+      if (hasGoalie(f) && Math.max(...gk) - Math.min(...gk) > 2) res.seasonGoalie.push(`${f} ${style}: goalie ${gk}`);
+    }
+    return res;
+  });
+  check(r.time.length === 0, `equal playing time in ${r.runs} random lineups (within one period)`, r.time.slice(0, 3).join(" | "));
+  check(r.once.length === 0, "every kid exactly once per period", r.once.slice(0, 3).join(" | "));
+  check(r.goalie.length === 0, "kids who can't play goal are never in goal", r.goalie.slice(0, 3).join(" | "));
+  check(r.twice.length === 0, "nobody sits twice in a row when it can be avoided", r.twice.slice(0, 3).join(" | "));
+  check(r.favs.hit / r.favs.tot > 0.95, "stick: kids get their own favorite spot", `${r.favs.hit}/${r.favs.tot}`);
+  check(r.change.length === 0, "formation changes never change playing time", r.change.slice(0, 3).join(" | "));
+  check(r.season.length === 0, "over 8 games, sitting evens out (within one) for every size", r.season.join(" | "));
+  check(r.seasonGoalie.length === 0, "over 8 games, goalie turns spread (within two)", r.seasonGoalie.join(" | "));
+  // On screen: a 9v9 team, extra kids added, favorites set and then changed, lineups remade.
+  await page.click("text=Try it with sample names");
+  await page.click("#team-btn"); await page.click('[data-d="edit"]'); await page.check("#size-9v9"); await page.click('[data-d="save"]');
+  await page.click('[data-action="install-later"]').catch(() => {});
+  await page.click("#tab-players");
+  for (const n of ["Isla", "Jack", "Kenji", "Lucia", "Mateo", "Nora"]) { await page.fill("#add-name", n); await page.press("#add-name", "Enter"); }
+  const setFavs = async (name, spots) => {
+    await page.click(`.pinfo:has-text("${name}")`);
+    for (const b of await page.$$('.dlg [data-pos][aria-pressed="true"]')) await b.click();
+    for (const k of spots) await page.click(`.dlg [data-pos="${k}"]`);
+    await page.click('[data-d="save"]');
+  };
+  const lineupCheck = async (label, favs) => {
+    await page.click("#tab-games");
+    if (!(await page.$('[data-action="make-lineup"]'))) await page.click(".game-row").catch(async () => { await page.click('[data-action="quick-game"]'); });
+    await page.click('[data-action="make-lineup"]');
+    if (await page.$('.dlg [data-d="ok"]')) await page.click('.dlg [data-d="ok"]');
+    const rows = await page.$$eval(".timeline tr", (r) => r.map((x) => [x.querySelector(".nm").textContent.trim(), x.querySelector(".tot").textContent.trim()]));
+    const played = rows.map(([, t]) => Number(t.split("/")[0]));
+    const g = await page.evaluate(() => { const t = team(); return { plan: currentGame(t).plan, players: t.players.map((p) => [p.id, p.name]) }; });
+    const idOf = Object.fromEntries(g.players.map(([id, n]) => [n, id]));
+    // Stick (9v9 default): each kid with a favorite plays it every period they're on the field.
+    const misses = Object.entries(favs).filter(([n, k]) => g.plan.some((q) => Object.values(q.positions).includes(idOf[n]) && q.positions[k] !== idOf[n]));
+    check(rows.length === 14 && Math.max(...played) - Math.min(...played) <= 1 && !misses.length,
+      `${label}: 14 kids, fair time on screen, favorites kept`, played.join(",") + (misses.length ? " missed " + misses.map((m) => m[0]).join(",") : ""));
+  };
+  await setFavs("Ava", ["LF"]); await setFavs("Isla", ["CD"]); await setFavs("Kenji", ["RM"]); await setFavs("Nora", ["GK"]);
+  await lineupCheck("first lineup", { Ava: "LF", Isla: "CD", Kenji: "RM" });
+  await page.click("#tab-players");
+  await setFavs("Ava", ["RD"]); await setFavs("Isla", ["LF"]); await setFavs("Mateo", ["CM"]);
+  await page.click("#tab-games");
+  await page.click('[data-action="make-lineup"]');
+  check(!!(await page.$('.dlg [data-d="ok"]')), "remaking asks for the formation again");
+  await page.click('.dlg [data-d="cancel"]');
+  await page.click('[data-action="back"]');
+  await lineupCheck("after changing favorites", { Ava: "RD", Isla: "LF", Kenji: "RM", Mateo: "CM" });
+  check(!problems.length, "no page errors", problems.join(" | "));
+  await ctx.close();
+}
+
 // ---------------------------------------------------------------- iPhone home screen help
 
 async function iphoneTests(browser) {
@@ -389,11 +537,14 @@ async function iphoneTests(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
-    await plannerTests(browser);
-    await flowTests(browser, "light");
-    await flowTests(browser, "dark");
-    await iphoneTests(browser);
-    await safetyTests(browser);
+    // `node tests/run.js fair` (or planner, screens, iphone, safety) runs just that part.
+    const only = process.argv[2];
+    const run = (name) => !only || only === name;
+    if (run("planner")) await plannerTests(browser);
+    if (run("screens")) { await flowTests(browser, "light"); await flowTests(browser, "dark"); }
+    if (run("iphone")) await iphoneTests(browser);
+    if (run("fair")) await fairnessTests(browser);
+    if (run("safety")) await safetyTests(browser);
   } catch (e) {
     failures++;
     console.log("  FAIL test crashed — " + e.message.split("\n")[0]);
