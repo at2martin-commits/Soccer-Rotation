@@ -1875,12 +1875,14 @@ function importDialog(t) {
     <ol class="steps">
       <li>On your team's Blue Sombrero page, open the <strong>Calendar</strong> and tap <strong>Export</strong> (or <strong>Sync</strong>). Copy the link it shows. It starts with <strong>webcal://</strong>.</li>
       <li>Paste the link here and tap <strong>Download calendar file</strong>.</li>
-      <li>Come back, tap <strong>Choose calendar file</strong> and pick the file you downloaded. It ends in <strong>.ics</strong>.</li>
+      <li>Come back, tap <strong>Choose calendar file</strong> and pick the file you just downloaded. Look in <strong>Downloads</strong>; it may be named <strong>Calendar</strong> or end in <strong>.ics</strong>.</li>
     </ol>
     <input class="field" id="cal-link" type="url" inputmode="url" autocomplete="off" placeholder="Paste the webcal:// link" aria-label="Calendar link">
     <a class="btn" id="cal-get" target="_blank" rel="noopener noreferrer" aria-disabled="true">Download calendar file</a>
     <label class="btn primary" for="cal-file">Choose calendar file</label>
-    <input type="file" id="cal-file" accept=".ics,text/calendar" hidden>
+    <!-- No accept filter: Blue Sombrero's download often has no .ics ending, and Android greys out
+         files it can't match. The contents are checked instead. -->
+    <input type="file" id="cal-file" hidden>
     <details class="cal-paste"><summary>The calendar opened as text instead?</summary>
       <p class="hint">Select all of it, copy, and paste it here.</p>
       <textarea class="field" id="cal-text" placeholder="BEGIN:VCALENDAR…"></textarea>
@@ -1918,7 +1920,7 @@ function readCalendar(t, raw) {
   if (!games.length) {
     return calendarMessage(/BEGIN:VCALENDAR/i.test(raw)
       ? "No games found in that calendar. Games need titles like \"Thunder Vs Tigers\"."
-      : "That isn't a calendar file. Pick the file that ends in .ics.");
+      : "That isn't a calendar file. Pick the newest file in Downloads (it may be named Calendar).");
   }
   // Your team plays in every game: it's the most common name, unless this team's own name is there.
   const counts = new Map();

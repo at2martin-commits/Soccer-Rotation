@@ -553,7 +553,9 @@ async function importTests(browser) {
   check(href === "https://calendar.bluesombrero.com/abc/team.ics" && bad === null, "webcal link becomes a download link; other links refused", String(href));
   await p.setInputFiles("#cal-file", { name: "Not a calendar.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
   check((await p.textContent("#cal-msg")).includes("isn't a calendar"), "a wrong file gets a plain message");
-  await p.setInputFiles("#cal-file", { name: "team.ics", mimeType: "text/calendar", buffer: Buffer.from(ics) });
+  // Blue Sombrero's download often has no .ics ending, so the picker must not filter by type.
+  check(!(await p.getAttribute("#cal-file", "accept")), "file picker lets any file be chosen (Android greys out unmatched files)");
+  await p.setInputFiles("#cal-file", { name: "Calendar", mimeType: "application/octet-stream", buffer: Buffer.from(ics) });
   await p.waitForSelector("#cal-team");
   const picked = await p.$eval("#cal-team", (x) => x.value);
   const rows = await p.$$eval("#cal-list li", (r) => r.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
