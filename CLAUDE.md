@@ -89,7 +89,8 @@ asks for changes in plain words.
 3. **Share text / game summary**: `lineupText` (pre-game text share), `reportData` → `reportHTML`
    (preview) and `reportCanvas` (the PNG). The summary always lists: Team (Home/Away), Opponent,
    Score, Date, Game, then the playing-time table and absences.
-4. **Schedule import** (`importDialog` → `readCalendar`; `parseCalendar`, `calDate`, `calendarGames`,
+4. **Schedule import**, **hidden** (`SHOW_IMPORT = false`; Steven: "doesn't work like I want", may
+   return; the code and tests stay, tests open it with `importDialog(team())`) (`importDialog` → `readCalendar`; `parseCalendar`, `calDate`, `calendarGames`,
    `importPlan`): reads a `.ics` file the coach downloads (Blue Sombrero / Stack Sports team calendar
    Export/Sync gives a `webcal://` link; the app turns it into an https download link, since it never
    fetches anything itself). Titles "Home Vs Away" (Blue Sombrero) or "Away @ Home"; practices and

@@ -544,7 +544,9 @@ async function importTests(browser) {
   // A game already on the schedule (no time yet) gets updated, not doubled.
   await p.evaluate((d) => { const t = team(); t.games.push({ id: state.nextId++, date: d, opponent: "red rockets", home: "", time: "", place: "", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] }); commit(); }, iso(day(7)));
   await p.click("#tab-games");
-  await p.click('[data-action="import-schedule"]');
+  // The button is hidden for now (SHOW_IMPORT); the import itself is still tested.
+  check(!(await p.$('[data-action="import-schedule"]')), "import button is hidden");
+  await p.evaluate(() => importDialog(team()));
   // Link box: webcal links become https downloads; anything else stays disabled.
   await p.fill("#cal-link", "webcal://calendar.bluesombrero.com/abc/team.ics");
   const href = await p.getAttribute("#cal-get", "href");
@@ -574,11 +576,11 @@ async function importTests(browser) {
   check(g2 && g2.home === "away" && g2.time === "09:00" && g2.place === "Lincoln School;Field B" && g3 && g3.home === "away" && g9 && g9.time === "",
     "Vs means home first; @ means away; local and all-day times", JSON.stringify([g2, g3 && g3.home, g9 && g9.time]));
   const listText = (await p.textContent(".game-list")).replace(/\s+/g, " ");
-  check(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "games list with the import button fits the phone (no sideways scrolling)");
+  check(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "games list fits the phone (no sideways scrolling)");
   check(listText.includes("Central Park, Field 3") && /\d:\d\d/.test(listText), "games list shows time and field");
   check(!(await p.evaluate(() => window.__pwned)) && !(await p.$$("main img:not(.install-icon)")).length && listText.includes("<img"), "team names from a calendar are shown as text, never run");
   // Importing the same file again changes nothing.
-  await p.click('[data-action="import-schedule"]');
+  await p.evaluate(() => importDialog(team()));
   await p.click(".cal-paste summary");
   await p.fill("#cal-text", ics);
   await p.click('[data-d="read-text"]');
@@ -606,7 +608,7 @@ async function importTests(browser) {
   const q = await c2.newPage();
   await q.goto(MAIN);
   await q.click("text=Try it with sample names");
-  await q.click("#tab-games"); await q.click('[data-action="import-schedule"]');
+  await q.click("#tab-games"); await q.evaluate(() => importDialog(team()));
   await q.setInputFiles("#cal-file", { name: "calendar.ics", mimeType: "text/calendar", buffer: Buffer.from(real) });
   await q.waitForSelector("#cal-team");
   const team2 = await q.$eval("#cal-team", (x) => x.value), up = await q.isChecked("#cal-upcoming");

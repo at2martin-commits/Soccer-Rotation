@@ -17,8 +17,7 @@ how to move your teams over.)
   instead be set to **Stick to positions** (the default for 9v9 and 11v11): kids play their preferred
   spot every period they're on the field, and others keep the spot they've been playing.
 - **Games**: add the dates from your schedule, with an optional start time, opponent, field
-  and home or away, or **Import schedule** from a Blue Sombrero (Stack Sports) team calendar or
-  any calendar file (.ics): dates, times, opponents, fields and home or away come in at once.
+  and home or away.
   On game day, open the game and make its lineup. Past games keep their lineups to look back on.
 - **Lineups**: making a lineup asks which formation you're playing (each size has several,
   from attacking to defensive, spelled out like "3 defense, 3 mid, 2 forward"). Each game's

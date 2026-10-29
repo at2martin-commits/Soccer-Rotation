@@ -1310,7 +1310,7 @@ function gamesView(t) {
       <button class="btn primary grow" type="button" data-action="add-game">${ICON.plus} Add game</button>
       ${hasToday ? "" : `<button class="btn" type="button" data-action="quick-game">Game today</button>`}
     </div>
-    <button class="btn full" type="button" data-action="import-schedule">Import schedule (Blue Sombrero)</button>`;
+    ${SHOW_IMPORT ? `<button class="btn full" type="button" data-action="import-schedule">Import schedule (Blue Sombrero)</button>` : ""}`;
   if (!games.length) {
     return html + `<div class="panel empty">
       <h2>Add your schedule</h2>
@@ -1797,6 +1797,9 @@ function gameDialog(t, g) {
 // Blue Sombrero titles games "Home Team Vs Visiting Team"; "Away @ Home" is also understood.
 // Practices, picture days and other non-games are skipped.
 
+// Hidden for now (Steven, Oct 2026): it doesn't work the way he wants yet. Set to true to bring
+// the Games tab button back; the import itself is kept and tested.
+const SHOW_IMPORT = false;
 const CAL_MAX_BYTES = 2000000, CAL_MAX_EVENTS = 1000;
 
 /** Each event's title, start (local date and "HH:MM") and place. Unknown lines are ignored. */
