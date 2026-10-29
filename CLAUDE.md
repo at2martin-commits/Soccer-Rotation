@@ -22,6 +22,19 @@ asks for changes in plain words.
    `gh run list -R at2martin-commits/Soccer-Rotation -w pages.yml -L 1` (wait for `completed success`).
    Then tell Steven what changed and to reload the beta link.
 3. **Only when Steven says to merge** (e.g. "merge beta to main", "push it to main", "I'm happy with the beta"):
+   - **Standard procedure before every merge to main (Steven's rule, always do it, no need to ask):**
+     1. *Clean up the code*: remove leftovers, debug code, stale comments; keep the style of the
+        surrounding code; make sure CLAUDE.md and README describe the app as it is.
+     2. *Check for unused code*: functions, constants, CSS classes, ids, `data-action`/`data-d`
+        handlers and icons nothing uses any more (some are built dynamically, e.g. `s-${cls}`,
+        `data-action="${x.kind}"`, so check before deleting). Remove what's truly unused.
+     3. *Security and vulnerability check*: every piece of outside text (saved data, backups,
+        scanned/pasted codes, links) is checked field by field and escaped with `esc()`; no new
+        `innerHTML` with unescaped text, no `fetch`/network, no inline handlers, CSP unchanged;
+        workflows keep minimal permissions and official, version-pinned actions; there are no
+        package dependencies (if any are ever added, audit them). Add tests for anything found.
+     4. Run the full `node tests/run.js`; everything must pass.
+     Tell Steven briefly what the checks found and fixed.
    - Bump `APP_VERSION` in `web/index.html` (1.1 → 1.2 for features, 1.1.1 for small fixes) and the
      "Version" line at the top of `README.md`; make sure the README feature list matches the app.
    - `git checkout main && git merge --ff-only beta && git push origin main`, then
