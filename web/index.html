@@ -164,6 +164,8 @@ select.field { appearance: auto; }
 .here input { width: 22px; height: 22px; accent-color: var(--accent); margin: 0; }
 .pinfo { flex: 1; min-width: 0; background: none; border: 0; text-align: left; padding: 8px 4px; display: grid; }
 .pname { font-weight: 600; overflow-wrap: anywhere; }
+.jersey { color: var(--muted); font-weight: 700; margin-right: 6px; font-variant-numeric: tabular-nums; }
+.name-row { display: grid; grid-template-columns: 1fr 5.5em; gap: 10px; }
 .pnotes { font-size: 0.85rem; color: var(--muted); }
 .icon-btn { width: 44px; height: 44px; border: 0; background: none; display: grid; place-items: center; color: var(--muted); flex: none; border-radius: 10px; }
 .icon-btn svg { width: 20px; height: 20px; }
@@ -375,6 +377,20 @@ textarea.field { width: 100%; min-height: 120px; font-family: ui-monospace, Menl
 a.btn { text-decoration: none; color: inherit; }
 a.btn.primary { color: var(--accent-ink); }
 #picture-out img { width: 100%; border: 1px solid var(--line); border-radius: 8px; }
+
+/* Parent scorekeeper */
+.qr-box { justify-self: center; width: min(100%, 340px); background: #ffffff; border-radius: 10px; padding: 6px; }
+.qr-box svg { display: block; width: 100%; height: auto; }
+.sk-panel .btn-row > .btn { flex: 1; min-width: 0; padding: 0 10px; }
+.sk-periods { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.sk-periods button {
+  min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+  font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; letter-spacing: 0.04em;
+}
+.sk-periods button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.spot .who b { font-variant-numeric: tabular-nums; }
+.sk-opp { padding: 10px; }
+.scan-video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: #000000; }
 
 @media (prefers-reduced-motion: no-preference) {
   .spot { transition: border-color 0.12s, box-shadow 0.12s; }
@@ -899,6 +915,180 @@ const clockTime = (hm) => { const [h, m] = hm.split(":").map(Number); return new
 /** "Saturday, November 7 · 9:00 AM · Central Park, Field 3", leaving out what's missing. Plain text: escape it for HTML. */
 const whenWhere = (g) => [longDate(g.date), g.time ? clockTime(g.time) : "", g.place || ""].filter(Boolean).join(" · ");
 
+// ------------------------------------------------------------------ QR codes
+// A small QR code maker (ISO 18004: byte mode, error correction level M, or L for long
+// text), drawn as an SVG. Codes are made on the phone; nothing is fetched.
+
+const QR_LEVELS = [
+  // Error correction codewords per block and number of blocks, for versions 1–40.
+  { bits: 0, ecc: [10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28],
+    blocks: [1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49] }, // M
+  { bits: 1, ecc: [7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
+    blocks: [1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25] }, // L
+];
+const QR_MASKS = [
+  (x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x, y) => x % 3 === 0, (x, y) => (x + y) % 3 === 0,
+  (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => ((x * y) % 2) + ((x * y) % 3) === 0,
+  (x, y) => (((x * y) % 2) + ((x * y) % 3)) % 2 === 0, (x, y) => (((x + y) % 2) + ((x * y) % 3)) % 2 === 0,
+];
+function qrRawModules(v) {
+  let r = (16 * v + 128) * v + 64;
+  if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; }
+  return r;
+}
+const qrDataBytes = (v, lv) => Math.floor(qrRawModules(v) / 8) - lv.ecc[v - 1] * lv.blocks[v - 1];
+function qrMul(x, y) {
+  let z = 0;
+  for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((y >>> i) & 1) * x; }
+  return z;
+}
+function qrEcc(data, degree) {
+  const div = new Array(degree).fill(0);
+  div[degree - 1] = 1;
+  for (let i = 0, root = 1; i < degree; i++, root = qrMul(root, 2)) {
+    for (let j = 0; j < degree; j++) { div[j] = qrMul(div[j], root); if (j + 1 < degree) div[j] ^= div[j + 1]; }
+  }
+  const out = new Array(degree).fill(0);
+  data.forEach((b) => {
+    const f = b ^ out.shift();
+    out.push(0);
+    div.forEach((c, i) => { out[i] ^= qrMul(c, f); });
+  });
+  return out;
+}
+/** The dark/light modules for `text`, or null if it's too long for a QR code. */
+function qrMatrix(text) {
+  const data = [...new TextEncoder().encode(text)];
+  // Level M, unless level L makes a noticeably smaller code (long links).
+  const fit = (lv) => { for (let v = 1; v <= 40; v++) if (4 + (v < 10 ? 8 : 16) + data.length * 8 <= qrDataBytes(v, lv) * 8) return v; return 0; };
+  const vm = fit(QR_LEVELS[0]), vl = fit(QR_LEVELS[1]);
+  if (!vl) return null;
+  const [ver, lv] = vm && vm - vl < 2 ? [vm, QR_LEVELS[0]] : [vl, QR_LEVELS[1]];
+  // Data bits: mode, length, bytes, terminator, then pad bytes.
+  const cap = qrDataBytes(ver, lv) * 8, bits = [];
+  const put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  put(4, 4); put(data.length, ver < 10 ? 8 : 16); data.forEach((b) => put(b, 8));
+  put(0, Math.min(4, cap - bits.length)); put(0, (8 - (bits.length % 8)) % 8);
+  for (let pad = 0xec; bits.length < cap; pad ^= 0xec ^ 0x11) put(pad, 8);
+  const bytes = [];
+  for (let i = 0; i < bits.length; i += 8) bytes.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+  // Split into blocks, add error correction, interleave.
+  const nb = lv.blocks[ver - 1], eccLen = lv.ecc[ver - 1], raw = Math.floor(qrRawModules(ver) / 8);
+  const short = nb - (raw % nb), shortLen = Math.floor(raw / nb);
+  const blocks = [];
+  for (let i = 0, k = 0; i < nb; i++) {
+    const d = bytes.slice(k, k + shortLen - eccLen + (i < short ? 0 : 1));
+    k += d.length;
+    const e = qrEcc(d, eccLen);
+    if (i < short) d.push(0);
+    blocks.push(d.concat(e));
+  }
+  const words = [];
+  for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== shortLen - eccLen || j >= short) words.push(b[i]); });
+  // Fixed patterns.
+  const size = ver * 4 + 17;
+  const mods = new Array(size * size).fill(false), fixed = new Array(size * size).fill(false);
+  const set = (x, y, dark) => { mods[y * size + x] = dark; fixed[y * size + x] = true; };
+  for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+  [[3, 3], [size - 4, 3], [3, size - 4]].forEach(([cx, cy]) => {
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const x = cx + dx, y = cy + dy, d = Math.max(Math.abs(dx), Math.abs(dy));
+      if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4);
+    }
+  });
+  const align = [];
+  if (ver > 1) {
+    const n = Math.floor(ver / 7) + 2, step = ver === 32 ? 26 : Math.ceil((ver * 4 + 4) / (n * 2 - 2)) * 2;
+    align.push(6);
+    for (let p = size - 7; align.length < n; p -= step) align.splice(1, 0, p);
+  }
+  align.forEach((ax, i) => align.forEach((ay, j) => {
+    if ((i === 0 && j === 0) || (i === 0 && j === align.length - 1) || (i === align.length - 1 && j === 0)) return;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(ax + dx, ay + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+  }));
+  const format = (w, mask) => {
+    const d = (lv.bits << 3) | mask;
+    let r = d;
+    for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+    const f = ((d << 10) | r) ^ 0x5412, b = (i) => ((f >>> i) & 1) === 1;
+    for (let i = 0; i <= 5; i++) w(8, i, b(i));
+    w(8, 7, b(6)); w(8, 8, b(7)); w(7, 8, b(8));
+    for (let i = 9; i < 15; i++) w(14 - i, 8, b(i));
+    for (let i = 0; i < 8; i++) w(size - 1 - i, 8, b(i));
+    for (let i = 8; i < 15; i++) w(8, size - 15 + i, b(i));
+    w(8, size - 8, true);
+  };
+  format(set, 0);
+  if (ver >= 7) {
+    let r = ver;
+    for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1f25);
+    const v = (ver << 12) | r;
+    for (let i = 0; i < 18; i++) {
+      const dark = ((v >>> i) & 1) === 1, a = size - 11 + (i % 3), b = Math.floor(i / 3);
+      set(a, b, dark); set(b, a, dark);
+    }
+  }
+  // Codewords in the zigzag, two columns at a time, from the bottom right.
+  let i = 0;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) {
+      const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert;
+      if (!fixed[y * size + x] && i < words.length * 8) { mods[y * size + x] = ((words[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; i++; }
+    }
+  }
+  // Try every mask and keep the easiest to scan.
+  let best = null, bestScore = Infinity;
+  QR_MASKS.forEach((m, mask) => {
+    const out = mods.map((dark, k) => (fixed[k] ? dark : dark !== m(k % size, Math.floor(k / size))));
+    format((x, y, dark) => { out[y * size + x] = dark; }, mask);
+    const s = qrPenalty(out, size);
+    if (s < bestScore) { best = out; bestScore = s; }
+  });
+  return { size, mods: best };
+}
+function qrPenalty(m, size) {
+  let score = 0, dark = 0;
+  for (let pass = 0; pass < 2; pass++) for (let a = 0; a < size; a++) {
+    let line = "", run = 0, prev = null;
+    for (let b = 0; b < size; b++) {
+      const v = pass ? m[b * size + a] : m[a * size + b];
+      line += v ? "1" : "0";
+      if (v === prev) run++;
+      else { if (run >= 5) score += run - 2; run = 1; prev = v; }
+    }
+    if (run >= 5) score += run - 2;
+    // Look-alikes of the corner squares (1:1:3:1:1 with light space beside them).
+    const padded = "0000" + line + "0000";
+    for (let i = padded.indexOf("1011101"); i >= 0; i = padded.indexOf("1011101", i + 1)) {
+      if (padded.slice(i - 4, i) === "0000" || padded.slice(i + 7, i + 11) === "0000") score += 40;
+    }
+  }
+  for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) {
+    const v = m[y * size + x];
+    if (v === m[y * size + x + 1] && v === m[(y + 1) * size + x] && v === m[(y + 1) * size + x + 1]) score += 3;
+  }
+  m.forEach((v) => { if (v) dark++; });
+  return score + (Math.ceil(Math.abs(dark * 20 - m.length * 10) / m.length) - 1) * 10;
+}
+/** The code as an SVG with its quiet border, always black on white so any camera reads it. */
+function qrSVG(text, label) {
+  const q = qrMatrix(text);
+  if (!q) return "";
+  let d = "";
+  for (let y = 0; y < q.size; y++) {
+    for (let x = 0; x < q.size; x++) {
+      if (!q.mods[y * q.size + x]) continue;
+      let w = 1;
+      while (x + w < q.size && q.mods[y * q.size + x + w]) w++;
+      d += `M${x + 4} ${y + 4}h${w}v1h-${w}z`;
+      x += w - 1;
+    }
+  }
+  const n = q.size + 8;
+  return `<svg viewBox="0 0 ${n} ${n}" role="img" aria-label="${esc(label || "QR code")}" shape-rendering="crispEdges"><rect width="${n}" height="${n}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+
 // ------------------------------------------------------------------ State and saving
 
 // Saved data and restored backups are cleaned field by field: ids must be numbers, dates real
@@ -910,6 +1100,8 @@ const cleanId = (v) => { const n = num(v); return n != null && Number.isSafeInte
 /** Keeps the first of any items that share an id. */
 const uniqueIds = (list) => { const ids = new Set(); return list.filter((x) => !ids.has(x.id) && ids.add(x.id)); };
 const text = (v, max = 80) => (v == null ? "" : String(v)).slice(0, max);
+/** A jersey number: up to 3 digits as text (so "00" stays "00"), or "" for none. */
+const jersey = (v) => { const s = v == null ? "" : String(v).trim(); return /^\d{1,3}$/.test(s) ? s : ""; };
 const isTime = (v) => typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
 const isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(toDate(v));
 const idList = (a) => (Array.isArray(a) ? a.map(num).filter((x) => x != null) : []);
@@ -982,6 +1174,7 @@ function normalize(s) {
       players: uniqueIds((Array.isArray(raw.players) ? raw.players : []).filter((p) => p && typeof p === "object").map((p) => ({
         id: cleanId(p.id) ?? newId(),
         name: text(p.name) || "Player",
+        number: jersey(p.number),
         goalie: p.goalie !== false,
         preferred: [...new Set((Array.isArray(p.preferred) ? p.preferred : []).filter((k) => known(POS, k)))],
       }))),
@@ -1160,6 +1353,8 @@ const ICON = {
   check: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
   download: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg>',
   back: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>',
+  qr: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z"/></svg>',
+  scan: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.5 6.5v3h-3v-3h3M11 5H5v6h6V5zm-1.5 9.5v3h-3v-3h3M11 13H5v6h6v-6zm6.5-6.5v3h-3v-3h3M19 5h-6v6h6V5zm-6 8h1.5v1.5H13V13zm1.5 1.5H16V16h-1.5v-1.5zM16 13h1.5v1.5H16V13zm-3 3h1.5v1.5H13V16zm1.5 1.5H16V19h-1.5v-1.5zM16 16h1.5v1.5H16V16zm1.5-1.5H19V16h-1.5v-1.5zm0 3H19V19h-1.5v-1.5zM22 7h-2V4h-3V2h5v5zm0 15v-5h-2v3h-3v2h5zM2 22h5v-2H4v-3H2v5zM2 2v5h2V4h3V2H2z"/></svg>',
 };
 
 // ------------------------------------------------------------------ Home screen shortcut
@@ -1225,6 +1420,13 @@ async function addToHomeScreen() {
 }
 
 function render() {
+  document.querySelector("nav.tabs").hidden = !!sk;
+  if (sk) {
+    document.getElementById("team-name").textContent = "Scorekeeper";
+    document.getElementById("team-sub").textContent = sk.team + (sk.opponent ? " vs " + sk.opponent : "") + " · " + toDate(sk.date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    document.getElementById("main").innerHTML = scorekeeperView();
+    return;
+  }
   const t = team();
   document.getElementById("team-name").textContent = t ? t.name : "Soccer Rotation";
   document.getElementById("team-sub").textContent = t
@@ -1261,7 +1463,7 @@ function playersView(t) {
       <div class="player${here ? "" : " out"}">
         <label class="here"><input type="checkbox" id="here-${p.id}" data-action="toggle-here" data-id="${p.id}" ${here ? "checked" : ""} aria-label="${esc(p.name)} is here"></label>
         <button class="pinfo" type="button" data-action="edit-player" data-id="${p.id}">
-          <span class="pname">${esc(p.name)}</span>
+          <span class="pname">${p.number ? `<span class="jersey">#${esc(p.number)}</span>` : ""}${esc(p.name)}</span>
           ${notes ? `<span class="pnotes">${esc(notes)}</span>` : ""}
         </button>
         <button class="icon-btn" type="button" data-action="edit-player" data-id="${p.id}" aria-label="Edit ${esc(p.name)}">${ICON.edit}</button>
@@ -1270,7 +1472,7 @@ function playersView(t) {
   return `
     <div class="panel">
       <div><span class="count">${present(t).length} of ${t.players.length} here today</span></div>
-      <p class="hint">Uncheck kids who are absent. Tap a name to rename them${hasGoalie(t.formation) ? ", set preferred positions, or turn off goalie" : " or set preferred positions"}.</p>
+      <p class="hint">Uncheck kids who are absent. Tap a name to rename them, add a jersey number${hasGoalie(t.formation) ? ", set preferred positions, or turn off goalie" : " or set preferred positions"}.</p>
     </div>
     <form class="add-row" data-form="add-player">
       <input class="field" id="add-name" name="name" placeholder="Add a player" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="New player name">
@@ -1341,7 +1543,13 @@ function gameView(t, g) {
       <button class="btn primary grow" type="button" data-action="make-lineup" ${here.length ? "" : "disabled"}>${ICON.refresh} ${plan ? "New lineup" : "Make lineup"}</button>
       ${plan ? `<button class="btn" type="button" data-action="share">${ICON.share} Share</button>` : ""}
     </div>`;
-    if (plan) html += `<button class="btn full" type="button" data-action="mark-played" ${changed ? "disabled" : ""}>${ICON.check} Mark as played</button>`;
+    if (plan) html += `<button class="btn full" type="button" data-action="mark-played" ${changed ? "disabled" : ""}>${ICON.check} Mark as played</button>
+      <section class="panel sk-panel"><h2>Parent scorekeeper</h2>
+        <p class="hint">A parent scans your code to keep score from the sideline. After the game, scan theirs to fill in the score.</p>
+        <div class="btn-row">
+          <button class="btn grow" type="button" data-action="scorekeeper">${ICON.qr} Show code</button>
+          <button class="btn grow" type="button" data-action="scan-score">${ICON.scan} Scan score</button>
+        </div></section>`;
   } else {
     html += `<div class="btn-row">
       <span class="played-note grow">${ICON.check} Played</span>
@@ -1575,6 +1783,7 @@ function archiveDialog(t) {
 const dlg = document.getElementById("dlg");
 let dlgHandlers = {};
 function openDialog(html, handlers) {
+  stopScan();
   dlg.innerHTML = `<div class="dlg">${html}</div>`;
   dlgHandlers = handlers || {};
   if (!dlg.open) dlg.showModal();
@@ -1582,6 +1791,7 @@ function openDialog(html, handlers) {
   if (first) first.focus();
 }
 function closeDialog() { if (dlg.open) dlg.close(); }
+dlg.addEventListener("close", () => stopScan());
 dlg.addEventListener("click", (e) => {
   if (e.target === dlg) return closeDialog(); // tap on the backdrop
   const b = e.target.closest("[data-d]");
@@ -1993,8 +2203,12 @@ function playerDialog(t, p) {
   const chips = () => formationPositions(t.formation).map((k) => `
     <button type="button" class="chip-toggle" data-d="pref" data-pos="${k}" aria-pressed="${preferred.includes(k)}">${POS[k].label}</button>`).join("");
   openDialog(`<h2>Edit player</h2>
-    <div class="group"><label class="lbl" for="player-name-input">Name</label>
-      <input class="field" id="player-name-input" value="${esc(p.name)}" autocapitalize="words"></div>
+    <div class="name-row">
+      <div class="group"><label class="lbl" for="player-name-input">Name</label>
+        <input class="field" id="player-name-input" value="${esc(p.name)}" autocapitalize="words"></div>
+      <div class="group"><label class="lbl" for="player-number-input">Jersey #</label>
+        <input class="field" id="player-number-input" value="${esc(p.number || "")}" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off"></div>
+    </div>
     ${hasGoalie(t.formation) ? `<label class="switch-row" for="player-goalie"><span>Can play goalie</span><input type="checkbox" id="player-goalie" ${p.goalie ? "checked" : ""}></label>` : ""}
     <div class="group"><span class="lbl">Preferred positions</span>
       <p class="hint">${teamStyle(t) === "stick"
@@ -2016,6 +2230,7 @@ function playerDialog(t, p) {
       const name = dlg.querySelector("#player-name-input").value.trim();
       if (!name) { dlg.querySelector("#player-name-input").focus(); return; }
       p.name = name;
+      p.number = jersey(dlg.querySelector("#player-number-input").value.replace(/\D/g, "").slice(0, 3));
       if (goalieBox) p.goalie = goalieBox.checked;
       p.preferred = p.goalie ? preferred : preferred.filter((k) => k !== "GK");
       closeDialog();
@@ -2183,10 +2398,344 @@ function toast(text) {
   toastTimer = setTimeout(() => { el.hidden = true; }, 2200);
 }
 
+// ------------------------------------------------------------------ Parent scorekeeper
+// The coach shows a QR code: a link to this app with the lineup packed after the "#" (that part
+// of a link never leaves the phone). A parent opens it, taps goals for each kid and for the
+// other team, and after the game shows a code back. The coach scans it (or opens it, or pastes
+// the link) and the score fills in. Nothing is sent anywhere: the codes carry everything.
+//
+// Lineup: #sk=1.team.game.YYYYMMDD.side.format.team name.opponent.players.periods
+//   players "id-number-name" joined by "~"; each period is pairs of (position, player index).
+// Score:  #skr=1.team.game.goals.oppGoals   goals "id-period" joined by "~", oppGoals "period" by "~".
+// Ids are base 36. Text is percent-encoded, dots, tildes and dashes included.
+
+const PUBLIC_URL = "https://at2martin-commits.github.io/Soccer-Rotation/";
+const SK_KEY = LOCAL_KEY + "-scorekeeper";
+const SK_FORMATS = { Q: "QUARTERS", H: "HALVES", S: "HALVES_SPLIT" };
+const skEnc = (s) => encodeURIComponent(s).replace(/[!'()*._~-]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+const skDec = (s) => { try { return decodeURIComponent(s); } catch (e) { return ""; } };
+const b36 = (n) => n.toString(36);
+const fromB36 = (s) => (/^[0-9a-z]{1,8}$/.test(s) ? cleanId(parseInt(s, 36)) : null);
+/** Codes point at this copy of the app when it has its own web address (regular or beta), else the public one. */
+const appUrl = () => (window.top === window && /^https?:$/.test(location.protocol) ? location.origin + location.pathname : PUBLIC_URL);
+let sk = null; // the parent's scorekeeper page, when the app was opened from a lineup code
+
+function scorekeeperLink(t, g) {
+  const players = planPlayers(t, g);
+  if (!players.length || players.length > 36) return null;
+  const names = gameNames(t, g);
+  const idx = new Map(players.map((p, i) => [p.id, i]));
+  const periods = g.plan.map((q) => POS_ORDER.filter((k) => idx.has(q.positions[k]))
+    .map((k) => b36(POS_ORDER.indexOf(k)) + b36(idx.get(q.positions[k]))).join(""));
+  const format = Object.keys(SK_FORMATS).find((k) => SK_FORMATS[k] === g.format) || "Q";
+  return appUrl() + "#sk=" + ["1", b36(t.id), b36(g.id), g.date.replace(/-/g, ""), g.home ? g.home[0] : "", format, skEnc(t.name), skEnc(g.opponent),
+    players.map((p) => [b36(p.id), jersey(p.number), skEnc(names[p.id] || p.name)].join("-")).join("~"), periods.join("~")].join(".");
+}
+/** Reads a lineup code. Everything is checked, since anyone can make a link. */
+function readScorekeeper(code) {
+  const f = String(code).split(".");
+  if (f.length !== 10 || f[0] !== "1" || !known(SK_FORMATS, f[5])) return null;
+  const teamId = fromB36(f[1]), gameId = fromB36(f[2]);
+  const date = /^\d{8}$/.test(f[3]) ? f[3].slice(0, 4) + "-" + f[3].slice(4, 6) + "-" + f[3].slice(6) : "";
+  if (teamId == null || gameId == null || !isDate(date)) return null;
+  const ids = new Set();
+  const players = f[8].split("~").map((x) => x.split("-")).filter((x) => x.length === 3)
+    .map(([id, number, name]) => ({ id: fromB36(id), number: jersey(number), name: text(skDec(name)) || "Player" }))
+    .filter((p) => p.id != null && !ids.has(p.id) && ids.add(p.id));
+  if (!players.length || players.length > 36) return null;
+  const format = SK_FORMATS[f[5]];
+  const plan = f[9].split("~").slice(0, FORMATS[format].periods).map((s) => {
+    const positions = {}, used = new Set();
+    for (const [, k, i] of s.matchAll(/([0-9a-z])([0-9a-z])/g)) {
+      const pos = POS_ORDER[parseInt(k, 36)], p = players[parseInt(i, 36)];
+      if (pos && p && positions[pos] == null && !used.has(p.id)) { positions[pos] = p.id; used.add(p.id); }
+    }
+    return { positions, bench: players.filter((p) => !used.has(p.id)).map((p) => p.id) };
+  });
+  return { teamId, gameId, date, format, plan, players, home: f[4] === "h" ? "home" : f[4] === "a" ? "away" : "",
+    team: text(skDec(f[6])) || "Team", opponent: text(skDec(f[7])), key: f.slice(1, 4).join(".") + "." + f[6] };
+}
+/** The lineup plus the parent's taps so far (kept on their phone, so a reload loses nothing). */
+function loadScorekeeper(lineup) {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SK_KEY) || "null"); } catch (e) {}
+  const s = plainObject(saved), mine = s.key === lineup.key;
+  const ids = new Set(lineup.players.map((p) => p.id));
+  const period = (p) => Number.isInteger(num(p)) && num(p) >= 0 && num(p) < lineup.plan.length;
+  const list = (a) => (mine && Array.isArray(a) ? a.filter((x) => x && period(x.p)) : []);
+  return { ...lineup,
+    goals: list(s.goals).filter((x) => ids.has(num(x.id))).map((x) => ({ id: num(x.id), p: num(x.p) })),
+    oppGoals: list(s.oppGoals).map((x) => ({ p: num(x.p) })),
+    period: mine && period(s.period) ? num(s.period) : 0,
+    done: mine && s.done === true };
+}
+function skCommit() {
+  try { localStorage.setItem(SK_KEY, JSON.stringify({ key: sk.key, goals: sk.goals, oppGoals: sk.oppGoals, period: sk.period, done: sk.done })); } catch (e) {}
+  render();
+}
+const skGame = () => ({ format: sk.format, plan: sk.plan, goals: sk.goals, oppGoals: sk.oppGoals, opponent: sk.opponent, home: sk.home });
+const skName = (p) => (p.number ? "#" + p.number + " " : "") + p.name;
+
+function scoreResultLink() {
+  return appUrl() + "#skr=" + ["1", b36(sk.teamId), b36(sk.gameId), sk.goals.map((x) => b36(x.id) + "-" + x.p).join("~"), sk.oppGoals.map((x) => x.p).join("~")].join(".");
+}
+/** Finds a score code in scanned or pasted text. */
+function readScoreResult(raw) {
+  const m = String(raw).match(/#skr=([0-9a-z.~-]+)/);
+  const f = m ? m[1].split(".") : [];
+  if (f.length !== 5 || f[0] !== "1") return null;
+  const teamId = fromB36(f[1]), gameId = fromB36(f[2]);
+  if (teamId == null || gameId == null) return null;
+  const list = (x) => (x ? x.split("~").slice(0, 300) : []);
+  const period = (x) => (/^\d$/.test(x) ? Number(x) : null);
+  return { teamId, gameId,
+    goals: list(f[3]).map((x) => x.split("-")).map(([id, p]) => ({ id: fromB36(id), p: period(p) })).filter((x) => x.id != null && x.p != null),
+    oppGoals: list(f[4]).map(period).filter((p) => p != null).map((p) => ({ p })) };
+}
+
+/** Opening the app from a code: a lineup code starts the scorekeeper, a score code offers to save the score. */
+function readHash() {
+  const h = location.hash;
+  const clear = () => { try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {} };
+  sk = null;
+  if (h.startsWith("#sk=")) {
+    const lineup = readScorekeeper(h.slice(4));
+    if (lineup) sk = loadScorekeeper(lineup);
+    else { clear(); toast("That scorekeeper link is incomplete. Scan the coach's code again."); }
+  } else if (h.startsWith("#skr=")) {
+    clear();
+    const r = readScoreResult(h);
+    if (r) applyScoreDialog(r);
+    else toast("That score link is incomplete. Ask the parent to show the code again.");
+  }
+}
+
+// Coach side: show the code, then scan the parent's code back.
+function scorekeeperDialog(t, g) {
+  const link = scorekeeperLink(t, g);
+  const svg = link ? qrSVG(link, "Scorekeeper code for " + t.name) : "";
+  if (!svg) { toast("This lineup is too big for a code"); return; }
+  const missing = planPlayers(t, g).filter((p) => !p.number).length;
+  openDialog(`<h2>Parent scorekeeper</h2>
+    <p class="hint">A parent points their phone's camera at this code and opens the link. They get this lineup with jersey numbers and tap goals for each kid and for ${esc(oppName(g))}. After the game they show you a code: tap <strong>Scan score</strong> to add it here.</p>
+    <div class="qr-box">${svg}</div>
+    ${missing ? `<p class="hint">${missing} ${missing === 1 ? "player has" : "players have"} no jersey number. Add numbers on the Players tab: tap a name.</p>` : ""}
+    <p class="hint">Changed the lineup after they scanned? Show the code again.</p>
+    <div class="dlg-actions">
+      <button class="btn" type="button" data-d="send">${ICON.share} Send link</button>
+      <button class="btn primary" type="button" data-d="cancel">Done</button>
+    </div>`, { send: () => shareLink("Scorekeeper: " + t.name + (g.opponent ? " vs " + g.opponent : ""), link) });
+}
+async function shareLink(title, url) {
+  if (navigator.share) {
+    try { await navigator.share({ title, url }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  textDialog(title, url);
+}
+
+let scanStream = null, scanTimer = null, scanRun = 0;
+function stopScan() {
+  scanRun++;
+  clearTimeout(scanTimer);
+  if (scanStream) scanStream.getTracks().forEach((x) => x.stop());
+  scanStream = null;
+}
+function scanDialog() {
+  // Chrome on Android reads QR codes itself; elsewhere the phone's camera app opens the link.
+  const camera = "BarcodeDetector" in window && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  openDialog(`<h2>Scan the parent's score</h2>
+    ${camera ? `<video class="scan-video" id="scan-video" playsinline muted></video>` : ""}
+    <p class="hint" id="scan-msg">${camera ? "Point your camera at the code on the parent's phone."
+      : "Open your phone's camera app and point it at the code on the parent's phone, then open the link. It comes back here with the score."}</p>
+    <div class="group"><label class="lbl" for="scan-paste">Or paste the link the parent sent</label>
+      <div class="add-row"><input class="field" id="scan-paste" autocomplete="off" placeholder="https://…#skr=…">
+      <button class="btn" type="button" data-d="paste">Use</button></div></div>
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button></div>`, {
+    paste: () => { if (!useScoreCode(dlg.querySelector("#scan-paste").value)) dlg.querySelector("#scan-paste").focus(); },
+  });
+  if (camera) startScan();
+}
+async function startScan() {
+  const run = ++scanRun;
+  const msg = (text) => { const el = dlg.querySelector("#scan-msg"); if (el) el.textContent = text; };
+  try {
+    if (!(await BarcodeDetector.getSupportedFormats()).includes("qr_code")) throw new Error("no QR");
+    const detector = new BarcodeDetector({ formats: ["qr_code"] });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    const video = dlg.querySelector("#scan-video");
+    if (run !== scanRun || !video) { stream.getTracks().forEach((x) => x.stop()); return; } // closed meanwhile
+    scanStream = stream;
+    video.srcObject = stream;
+    await video.play();
+    const tick = async () => {
+      if (run !== scanRun) return;
+      const found = await detector.detect(video).catch(() => []);
+      if (run !== scanRun) return;
+      if (found.some((c) => useScoreCode(c.rawValue, true))) return;
+      scanTimer = setTimeout(tick, 200);
+    };
+    tick();
+  } catch (e) {
+    if (run !== scanRun) return;
+    stopScan();
+    const v = dlg.querySelector("#scan-video");
+    if (v) v.hidden = true;
+    msg("The camera didn't start. Allow camera access and try again, or use your phone's camera app: point it at the code and open the link.");
+  }
+}
+/** Uses a scanned or pasted score code; says what's wrong otherwise. `quiet` keeps scanning on other codes. */
+function useScoreCode(raw, quiet) {
+  const r = readScoreResult(raw);
+  const el = dlg.querySelector("#scan-msg");
+  if (r) { stopScan(); applyScoreDialog(r); return true; }
+  if (el) el.textContent = /#sk=/.test(raw) ? "That's the lineup code. Scan the code the parent shows after the game."
+    : quiet ? el.textContent : "That isn't a score link. Ask the parent for the code from Game over.";
+  return false;
+}
+function applyScoreDialog(r) {
+  const t = state.teams.find((x) => x.id === r.teamId);
+  const g = t && t.games.find((x) => x.id === r.gameId);
+  if (!g || !g.plan) {
+    openDialog(`<h2>Game not found</h2>
+      <p class="hint">This score is for a game that isn't in this app. Scan it with the Soccer Rotation that showed the scorekeeper code. On iPhone the home screen app keeps its own games: open it and paste the parent's link under <strong>Scan score</strong>.</p>
+      <div class="dlg-actions"><button class="btn primary" type="button" data-d="cancel">OK</button></div>`);
+    return;
+  }
+  const ids = new Set([...planIds(g), ...t.players.map((p) => p.id)]);
+  const goals = r.goals.filter((x) => ids.has(x.id) && x.p < g.plan.length);
+  const oppGoals = r.oppGoals.filter((x) => x.p < g.plan.length);
+  const preview = { ...g, goals, oppGoals };
+  const had = g.goals.length + g.oppGoals.length;
+  const same = JSON.stringify([g.goals, g.oppGoals]) === JSON.stringify([goals, oppGoals]);
+  openDialog(`<h2>Score from the scorekeeper</h2>
+    <p class="hint">${esc(g.opponent ? "vs " + g.opponent : "Game")} · ${esc(longDate(g.date))}</p>
+    ${scoreboardHTML(t, preview)}
+    ${goalsHTML(t, preview, gameNames(t, g), false)}
+    ${had && !same ? `<div class="warn">This replaces the ${had} ${had === 1 ? "goal" : "goals"} already entered for this game.</div>` : ""}
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+      <button class="btn primary" type="button" data-d="ok">${g.played ? "Update score" : "Save score, mark played"}</button></div>`, {
+    ok: () => {
+      g.goals = goals;
+      g.oppGoals = oppGoals;
+      if (!g.played) markPlayed(t, g);
+      state.currentTeamId = t.id;
+      ui.tab = "games";
+      ui.gameId = g.id;
+      closeDialog();
+      commit();
+      window.scrollTo(0, 0);
+      toast("Score saved: " + scoreLine(t, g));
+    },
+  });
+}
+
+// Parent side: the lineup with jersey numbers; tap whoever scores.
+function scorekeeperView() {
+  const g = skGame(), team = { name: sk.team };
+  const byId = Object.fromEntries(sk.players.map((p) => [p.id, p]));
+  const names = Object.fromEntries(sk.players.map((p) => [p.id, skName(p)]));
+  if (sk.done) {
+    return `${scoreboardHTML(team, g)}
+      <section class="panel">
+        <h2>Show this to the coach</h2>
+        <p class="hint">The coach taps <strong>Scan score</strong> in Soccer Rotation (or points their phone's camera here) and the score fills in.</p>
+        <div class="qr-box">${qrSVG(scoreResultLink(), "Score code for the coach")}</div>
+        <div class="btn-row">
+          <button class="btn grow" type="button" data-action="sk-send">${ICON.share} Send instead</button>
+          <button class="btn grow" type="button" data-action="sk-edit">${ICON.edit} Fix the score</button>
+        </div>
+      </section>
+      ${goalsHTML(team, g, names, false)}`;
+  }
+  const q = sk.plan[sk.period];
+  const spot = (id, label) => {
+    const p = byId[id];
+    const goals = sk.goals.filter((x) => x.id === id && x.p === sk.period).length;
+    const badge = goals ? `<span class="goal" aria-label="${goals} ${goals === 1 ? "goal" : "goals"}">⚽${goals > 1 ? goals : ""}</span>` : "";
+    return `<button type="button" class="spot" data-action="sk-goal" data-id="${id}">${badge}<span class="pos">${label}</span>
+      <span class="who">${p.number ? `<b>#${esc(p.number)}</b> ` : ""}${esc(p.name)}</span></button>`;
+  };
+  const rows = ["FORWARD", "MIDFIELD", "DEFENSE", "GOAL"]
+    .map((line) => POS_ORDER.filter((k) => POS[k].line === line && q.positions[k] != null))
+    .filter((r) => r.length)
+    .map((r) => `<div class="prow">${r.map((k) => spot(q.positions[k], POS[k].short)).join("")}</div>`).join("");
+  const bench = q.bench.length ? `<div class="bench"><span class="label">Sitting</span><div class="prow">${q.bench.map((id) => spot(id, "SITS")).join("")}</div></div>` : "";
+  return `${scoreboardHTML(team, g)}
+    <p class="hint">Tap a player when they score, or the button under the field when ${esc(oppName(g))} scores. This is the coach's plan; if kids switch, tap whoever scored.</p>
+    <div class="sk-periods" role="group" aria-label="Period">${sk.plan.map((_, i) =>
+      `<button type="button" data-action="sk-period" data-qi="${i}" aria-pressed="${i === sk.period}" aria-label="${esc(periodName(sk.format, i))}">${periodShort(sk.format, i)}</button>`).join("")}</div>
+    <section class="panel period" aria-label="${esc(periodName(sk.format, sk.period))}">
+      <div class="period-head"><h2>${esc(periodName(sk.format, sk.period))}</h2></div>
+      <div class="pitch${q.positions.GK == null ? " no-keeper" : ""}">${rows}</div>${bench}
+      <div class="sk-opp"><button class="btn full" type="button" data-action="sk-opp">+ ${esc(oppName(g))} goal</button></div>
+    </section>
+    ${goalsHTML(team, g, names, true)}
+    <button class="btn primary full" type="button" data-action="sk-done">${ICON.check} Game over: show code for coach</button>`;
+}
+function scorekeeperMenu() {
+  openDialog(`<h2>Scorekeeper</h2>
+    <p class="hint">You're keeping score for ${esc(sk.team)}${sk.opponent ? " vs " + esc(sk.opponent) : ""} on ${esc(longDate(sk.date))}. Your taps are saved on this phone.</p>
+    <div class="dlg-actions"><button class="btn" type="button" data-d="close-sk">Close scorekeeper</button>
+      <button class="btn primary" type="button" data-d="cancel">Keep scoring</button></div>`, {
+    "close-sk": () => {
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+      sk = null;
+      closeDialog();
+      render();
+    },
+  });
+}
+function scorekeeperClick(b) {
+  switch (b.dataset.action) {
+    case "sk-period":
+      sk.period = Number(b.dataset.qi);
+      skCommit();
+      break;
+    case "sk-goal": {
+      const p = sk.players.find((x) => x.id === Number(b.dataset.id));
+      if (!p) break;
+      openDialog(`<h2>Goal for ${esc(skName(p))}?</h2><p class="hint">${esc(periodName(sk.format, sk.period))}</p>
+        <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+          <button class="btn primary" type="button" data-d="ok" autofocus>Add goal</button></div>`, {
+        ok: () => { sk.goals.push({ id: p.id, p: sk.period }); closeDialog(); skCommit(); toast("Goal: " + skName(p) + " · " + periodName(sk.format, sk.period)); },
+      });
+      break;
+    }
+    case "sk-opp":
+      openDialog(`<h2>Goal for ${esc(oppName(sk))}?</h2><p class="hint">${esc(periodName(sk.format, sk.period))}</p>
+        <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+          <button class="btn primary" type="button" data-d="ok" autofocus>Add goal</button></div>`, {
+        ok: () => { sk.oppGoals.push({ p: sk.period }); closeDialog(); skCommit(); toast(oppName(sk) + " goal · " + periodName(sk.format, sk.period)); },
+      });
+      break;
+    case "remove-goal":
+      sk.goals.splice(Number(b.dataset.i), 1);
+      skCommit();
+      break;
+    case "remove-opp-goal":
+      sk.oppGoals.splice(Number(b.dataset.i), 1);
+      skCommit();
+      break;
+    case "sk-done":
+      sk.done = true;
+      skCommit();
+      window.scrollTo(0, 0);
+      break;
+    case "sk-edit":
+      sk.done = false;
+      skCommit();
+      break;
+    case "sk-send":
+      shareLink("Final score: " + scoreLine({ name: sk.team }, skGame()), scoreResultLink());
+      break;
+  }
+}
+
 // ------------------------------------------------------------------ Actions
 
 const SAMPLE_NAMES = ["Ava", "Ben", "Chloe", "Diego", "Emma", "Finn", "Grace", "Hiro"];
 const MORE_NAMES = ["Isla", "Jack", "Kenji", "Lucia", "Mateo", "Nora", "Omar", "Priya"];
+const SAMPLE_NUMBERS = ["4", "7", "10", "2", "9", "11", "5", "13", "8", "3", "12", "6", "15", "21", "1", "17"];
 const SAMPLE_OPPONENTS = ["Tigers", "Sharks", "Comets", "Falcons", "Wildcats", "Rockets", "Hornets", "Dragons", "Lightning", "Storm"];
 
 /** Beta only: a roster sized for the team (about 1.5 times the field) and 8–10 weekly games. */
@@ -2195,7 +2744,7 @@ function fillSampleTeam(t) {
   const names = [...SAMPLE_NAMES, ...MORE_NAMES].slice(0, Math.min(16, Math.ceil(field * 1.5)));
   const spots = formationPositions(t.formation).filter((k) => k !== "GK");
   names.forEach((name, i) => t.players.push({
-    id: state.nextId++, name,
+    id: state.nextId++, name, number: SAMPLE_NUMBERS[i],
     goalie: i !== 2, // one kid who doesn't play goal
     preferred: i === 0 && hasGoalie(t.formation) ? ["GK"] : i === 1 ? [spots[spots.length - 1]] : i === 3 ? [spots[0]] : [],
   }));
@@ -2211,7 +2760,7 @@ function fillSampleTeam(t) {
 }
 
 document.getElementById("about-btn").addEventListener("click", aboutDialog);
-document.getElementById("team-btn").addEventListener("click", () => (state.teams.length ? teamMenu() : teamDialog(null)));
+document.getElementById("team-btn").addEventListener("click", () => (sk ? scorekeeperMenu() : state.teams.length ? teamMenu() : teamDialog(null)));
 document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
   // Tapping Games while already there goes back to the list.
   if (b.dataset.tab === "games" && ui.tab === "games") ui.gameId = null;
@@ -2227,7 +2776,7 @@ document.getElementById("main").addEventListener("submit", (e) => {
   const input = document.getElementById("add-name");
   const name = input.value.trim();
   if (!name) return;
-  team().players.push({ id: state.nextId++, name, goalie: true, preferred: [] });
+  team().players.push({ id: state.nextId++, name, number: "", goalie: true, preferred: [] });
   commit();
   document.getElementById("add-name").focus();
 });
@@ -2264,6 +2813,15 @@ function addGoal(t, g, qi, slot) {
   toast("Goal: " + gameNames(t, g)[id] + " · " + periodName(g.format, qi));
 }
 
+/** Adds a game to the season totals, keeping the names of who played and who was absent. */
+function markPlayed(t, g) {
+  g.played = true;
+  const inLineup = planPlayers(t, g);
+  inLineup.forEach((p) => { g.names[p.id] = p.name; });
+  g.absent = t.players.filter((p) => !inLineup.includes(p)).map((p) => p.id);
+  g.absent.forEach((id) => { g.names[id] = t.players.find((p) => p.id === id).name; });
+}
+
 function openGame(id) {
   ui.gameId = id;
   render();
@@ -2273,6 +2831,7 @@ function openGame(id) {
 document.getElementById("main").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-action]");
   if (!b || b.disabled) return;
+  if (sk) { scorekeeperClick(b); return; }
   const t = team();
   const g = currentGame(t);
   switch (b.dataset.action) {
@@ -2288,7 +2847,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
       break;
     case "sample-team": {
       const nt = newTeam("Sample team", "SIX_2_3", "QUARTERS");
-      SAMPLE_NAMES.forEach((n) => nt.players.push({ id: state.nextId++, name: n, goalie: true, preferred: [] }));
+      SAMPLE_NAMES.forEach((n, i) => nt.players.push({ id: state.nextId++, name: n, number: SAMPLE_NUMBERS[i], goalie: true, preferred: [] }));
       state.teams.push(nt);
       state.currentTeamId = nt.id;
       ui.tab = "players";
@@ -2366,17 +2925,19 @@ document.getElementById("main").addEventListener("click", async (e) => {
     }
     case "mark-played":
       confirmDialog("Mark this game as played?", "It's added to the season totals, so future lineups give more time to kids who've sat more.", "Mark as played", () => {
-        g.played = true;
-        const inLineup = planPlayers(t, g);
-        inLineup.forEach((p) => { g.names[p.id] = p.name; });
-        g.absent = t.players.filter((p) => !inLineup.includes(p)).map((p) => p.id);
-        g.absent.forEach((id) => { g.names[id] = t.players.find((p) => p.id === id).name; });
+        markPlayed(t, g);
         commit();
         toast("Game marked as played");
       });
       break;
     case "share-results":
       shareResultsDialog(t, g);
+      break;
+    case "scorekeeper":
+      scorekeeperDialog(t, g);
+      break;
+    case "scan-score":
+      scanDialog();
       break;
     case "opp-goal": {
       const qi = Number(b.dataset.qi);
@@ -2534,6 +3095,8 @@ mainEl.addEventListener("click", (e) => {
   if (Date.now() < suppressClickUntil) { e.stopImmediatePropagation(); e.preventDefault(); }
 }, true);
 
+readHash();
 render();
 initCloud();
+window.addEventListener("hashchange", () => { if (/^#skr?=/.test(location.hash)) { closeDialog(); readHash(); render(); } });
 </script>

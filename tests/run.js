@@ -18,6 +18,8 @@ execFileSync("python3", ["tools/build-site.py", "web/index.html", path.join(SITE
 const MAIN = "file://" + path.join(SITE, "index.html");
 const BETA = "file://" + path.join(SITE, "beta", "index.html");
 
+// Fingerprints of QR codes that jsQR (a real reader) decoded correctly when the QR maker was written.
+const QR_PRINTS = "21:768171335 33:174752587 69:78410374 101:742215002";
 let failures = 0;
 const check = (ok, label, detail = "") => {
   console.log(`${ok ? "  ok  " : "  FAIL"} ${label}${detail ? " — " + detail : ""}`);
@@ -307,6 +309,148 @@ async function flowTests(browser, scheme) {
   await p.reload();
   check((await p.evaluate(() => state.teams.length)) === 2, "data survives reload");
   check(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "no sideways scrolling");
+  check(!problems.length, "no page errors or blocked loads", problems.join(" | "));
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------- Parent scorekeeper
+// The coach shows a QR code with the lineup; a parent opens it, taps goals, and shows a code
+// back; the coach scans it. The camera is Chromium's fake one and the QR reader a stand-in.
+
+async function scorekeeperTests(browser) {
+  console.log("Scorekeeper");
+  const { ctx, page: p, problems } = await openApp(browser);
+  await p.addInitScript(() => {
+    window.__qr = null;
+    window.BarcodeDetector = class { static async getSupportedFormats() { return ["qr_code"]; } async detect() { return window.__qr ? [{ rawValue: window.__qr }] : []; } };
+  });
+  await p.reload();
+  // Our QR maker draws exactly what a real reader decoded (checked with jsQR when written).
+  const prints = await p.evaluate(() => ["HELLO", "https://example.com/#sk=1.a.b.20260912.h.Q.Team%20A", "x".repeat(400), "é~".repeat(300)].map((t) => {
+    const q = qrMatrix(t);
+    let h = 0;
+    q.mods.forEach((v, i) => { if (v) h = (h * 31 + i) % 1000000007; });
+    return q.size + ":" + h;
+  }));
+  check(prints.join(" ") === QR_PRINTS, "QR codes match the decoder-checked ones", prints.join(" "));
+  check(await p.evaluate(() => qrMatrix("x".repeat(3000)) === null && qrSVG("x".repeat(3000)) === ""), "text too long for a QR code is refused");
+  // Jersey numbers.
+  await p.click("text=Try it with sample names");
+  await p.click('.pinfo:has-text("Ava")');
+  await p.fill("#player-number-input", "1a2"); await p.click('[data-d="save"]');
+  check((await p.textContent('.player:has-text("Ava") .jersey')) === "#12", "jersey number saved (digits only) and shown on the roster");
+  await p.click('.pinfo:has-text("Ben")');
+  await p.fill("#player-number-input", ""); await p.click('[data-d="save"]');
+  const nums = await p.evaluate(() => [jersey("007"), jersey(7), jersey("1234"), jersey("x"), jersey(null), normalize({ teams: [{ players: [{ id: 1, name: "A", number: "<b>" }, { id: 2, name: "B", number: 9 }] }] }).teams[0].players.map((x) => x.number).join("|")]);
+  check(nums.join(",") === "007,7,,,,|9", "jersey numbers cleaned on load", nums.join(","));
+  // Coach: lineup, then the code.
+  await p.evaluate(() => { team().name = "U8 Thunder"; commit(); });
+  await p.click("#tab-games"); await p.click('[data-action="add-game"]');
+  await p.fill("#game-date", "2026-09-12"); await p.fill("#game-opp", "Tigers-2 (A.~)"); await p.click("label:has(#side-home)"); await p.click('[data-d="save"]');
+  await p.click('.game-row:has-text("Tigers")');
+  check(!(await p.$('[data-action="scorekeeper"]')), "no scorekeeper code before the lineup");
+  await p.click('[data-action="make-lineup"]'); await p.click('[data-d="ok"]');
+  await p.click('[data-action="scorekeeper"]');
+  check((await p.$$(".dlg .qr-box svg path")).length === 1 && (await p.textContent(".dlg")).includes("1 player has no jersey number"), "coach shows a QR code; notes kids without numbers");
+  const link = await p.evaluate(() => { const t = team(); return scorekeeperLink(t, currentGame(t)); });
+  const svgLink = await p.evaluate(() => { const t = team(); return qrSVG(scorekeeperLink(t, currentGame(t)), "Scorekeeper code for " + t.name); });
+  check(link.startsWith("https://at2martin-commits.github.io/Soccer-Rotation/#sk=1.") && (await p.getAttribute(".dlg .qr-box path", "d")) === svgLink.match(/ d="([^"]+)"/)[1] && link.length < 600,
+    "the code is a link to the app with the lineup", link.length + " characters");
+  await p.click('[data-d="send"]');
+  check((await p.evaluate(() => window.__shared && window.__shared.title)) === "Scorekeeper: U8 Thunder vs Tigers-2 (A.~)", "send the link instead");
+  await p.click('[data-d="cancel"]').catch(() => {});
+  const coach = await p.evaluate(() => { const t = team(), g = currentGame(t); return { plan: g.plan, players: planPlayers(t, g).map((x) => [x.id, x.name, x.number]) }; });
+  // Parent: opens the link (a phone with no teams of its own here).
+  const par = await openApp(browser);
+  const pp = par.page;
+  await pp.goto(MAIN + link.slice(link.indexOf("#")));
+  check((await pp.textContent("#team-name")) === "Scorekeeper" && (await pp.isHidden("nav.tabs")) && (await pp.innerText(".scoreboard")).includes("Tigers-2 (A.~)"),
+    "parent gets the scorekeeper page with both teams");
+  const shown = await pp.$$eval(".pitch .spot, .bench .spot", (s) => s.map((x) => x.querySelector(".who").textContent.trim()));
+  const q0 = coach.plan[0], label = (id) => { const k = coach.players.find((x) => x[0] === id); return (k[2] ? "#" + k[2] + " " : "") + k[1]; };
+  check(shown.length === coach.players.length && Object.values(q0.positions).concat(q0.bench).every((id) => shown.includes(label(id))) && shown.includes("#12 Ava"),
+    "parent sees the 1st quarter lineup with jersey numbers", shown.join(", "));
+  const fwd = q0.positions.CF;
+  await pp.click(`[data-action="sk-goal"][data-id="${fwd}"]`);
+  check((await pp.textContent(".dlg h2")).startsWith("Goal for"), "tapping a kid asks before adding a goal");
+  await pp.click('[data-d="ok"]');
+  await pp.click('[data-action="sk-period"][data-qi="2"]');
+  check((await pp.textContent(".period h2")) === "Quarter 3", "switch quarters");
+  const q2kid = coach.plan[2].bench[0];
+  await pp.click(`[data-action="sk-goal"][data-id="${q2kid}"]`); await pp.click('[data-d="ok"]');
+  await pp.click('[data-action="sk-opp"]'); await pp.click('[data-d="ok"]');
+  await pp.click('[data-action="sk-opp"]'); await pp.click('[data-d="cancel"]');
+  await pp.click('[data-action="sk-opp"]'); await pp.click('[data-d="ok"]');
+  await pp.locator('[data-action="remove-opp-goal"]').last().click();
+  await pp.reload();
+  check(/2\s*–\s*1/.test(await pp.innerText(".sb-score")) && (await pp.textContent(".period h2")) === "Quarter 3", "taps survive a reload", (await pp.innerText(".sb-score")).replace(/\s+/g, " "));
+  check(!(await pp.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "scorekeeper: no sideways scrolling");
+  check((await pp.evaluate(() => localStorage.getItem("soccer-rotation"))) === null, "scorekeeping doesn't touch the parent's own teams");
+  await pp.click('[data-action="sk-done"]');
+  check((await pp.$$(".qr-box svg")).length === 1 && !(await pp.$('[data-action="sk-goal"]')), "game over shows a code for the coach");
+  const result = await pp.evaluate(() => scoreResultLink());
+  check(result.startsWith("https://at2martin-commits.github.io/Soccer-Rotation/#skr=1.") && (await pp.getAttribute(".qr-box path", "d")) === (await pp.evaluate(() => qrSVG(scoreResultLink()).match(/ d="([^"]+)"/)[1])),
+    "the parent's code is a score link", result);
+  await pp.click('[data-action="sk-edit"]');
+  check(!!(await pp.$('[data-action="sk-goal"]')), "parent can go back and fix the score");
+  await pp.click('[data-action="sk-done"]');
+  await pp.click("#team-btn"); await pp.click('[data-d="close-sk"]');
+  check(!(await pp.isHidden("nav.tabs")) && !(await pp.evaluate(() => location.hash)), "close scorekeeper goes to the regular app");
+  check(!par.problems.length, "parent page: no errors", par.problems.join(" | "));
+  await par.ctx.close();
+  // Coach scans the parent's code (camera on, then the reader sees it).
+  await p.click('[data-action="scan-score"]');
+  await p.waitForFunction(() => { const v = document.querySelector("#scan-video"); return v && v.srcObject && !v.paused; }, null, { timeout: 5000 }).catch(() => {});
+  check(await p.evaluate(() => !!(document.querySelector("#scan-video") && document.querySelector("#scan-video").srcObject)), "scan opens the camera");
+  await p.evaluate((l) => { window.__qr = l; }, link);
+  await p.waitForTimeout(500);
+  check((await p.textContent("#scan-msg")).includes("lineup code") && !!(await p.$("#scan-video")), "scanning the lineup code by mistake says so and keeps scanning");
+  await p.evaluate((r) => { window.__qr = r; }, result);
+  await p.waitForSelector('.dlg [data-d="ok"]');
+  const preview = (await p.innerText(".dlg .scoreboard")).replace(/\s+/g, " ");
+  check(/U8 Thunder Home 2 – 1 Tigers-2 \(A\.~\) Away/i.test(preview) && (await p.evaluate(() => !scanStream)), "coach sees the parent's score before saving; camera off", preview);
+  await p.click('[data-d="ok"]');
+  const g = await p.evaluate(() => currentGame(team()));
+  check(g.played && g.goals.length === 2 && g.goals.some((x) => x.id === fwd && x.p === 0) && g.goals.some((x) => x.id === q2kid && x.p === 2) && g.oppGoals.length === 1 && g.oppGoals[0].p === 2,
+    "score saved with who scored in which quarter; game marked played", JSON.stringify([g.goals, g.oppGoals]));
+  check((await p.$$(".played-note")).length === 1 && /2\s*–\s*1/.test(await p.innerText(".scoreboard")), "game shows played with the score");
+  // The phone's camera app opening the score link does the same; a changed score asks first.
+  await p.evaluate(() => { const g = currentGame(team()); g.goals.pop(); commit(); });
+  await p.goto(MAIN + result.slice(result.indexOf("#")));
+  check((await p.textContent(".dlg")).includes("replaces the 2 goals") && (await p.textContent('.dlg [data-d="ok"]')) === "Update score" && !(await p.evaluate(() => location.hash)),
+    "opening the score link offers to update; link cleared");
+  await p.click('[data-d="ok"]');
+  check((await p.evaluate(() => currentGame(team()).goals.length)) === 2, "score updated from the link");
+  // Paste, wrong codes, unknown games.
+  await p.evaluate(() => { const g = currentGame(team()); g.played = false; window.__qr = null; commit(); });
+  await p.click('[data-action="scan-score"]');
+  await p.fill("#scan-paste", "hello"); await p.click('[data-d="paste"]');
+  check((await p.textContent("#scan-msg")).includes("isn't a score link"), "pasting something else says so");
+  await p.fill("#scan-paste", "Final score " + result); await p.click('[data-d="paste"]');
+  check((await p.textContent(".dlg h2")) === "Score from the scorekeeper", "a pasted link works");
+  await p.click('[data-d="cancel"]');
+  await p.evaluate(() => applyScoreDialog(readScoreResult("#skr=1.zz.zz.1-0.")));
+  check((await p.textContent(".dlg h2")) === "Game not found", "a score for another app's game is refused");
+  await p.click('[data-d="cancel"]');
+  // Codes are checked like backups: no markup, nothing out of range.
+  const evil = await p.evaluate(() => {
+    const bad = ["1.1.2.2026091.h.Q.A.B.1-1-A.00", "2.1.2.20260912.h.Q.A.B.1-1-A.00", "1.1.2.20260912.h.constructor.A.B.1-1-A.00", "1.1.2.20260912.h.Q.A.B..00"].map(readScorekeeper);
+    const ok = readScorekeeper("1.1.2.20260912.x.H.%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E.%E0%A4%A.1-12345-K~1-2-Dup~2-7-B~zzzzzzzzz-1-C.z00010z01~0010");
+    const r = readScoreResult("#skr=1.1.2.1-0~2-9~3-x~zzzzzzzzzz-1.0~a~5");
+    return { bad, ok, r };
+  });
+  check(evil.bad.every((x) => x === null), "broken lineup codes are refused");
+  check(evil.ok.players.length === 2 && evil.ok.players[0].number === "" && evil.ok.home === "" && evil.ok.opponent === "" && evil.ok.plan.length === 2 &&
+    JSON.stringify(evil.ok.plan[0].positions) === '{"GK":1}' && evil.ok.plan[1].positions.GK === 1 && evil.ok.plan[1].bench.join() === "2",
+    "lineup codes cleaned: bad numbers, repeats, unknown spots and kids dropped", JSON.stringify(evil.ok.plan));
+  check(JSON.stringify(evil.r) === '{"teamId":1,"gameId":2,"goals":[{"id":1,"p":0},{"id":2,"p":9}],"oppGoals":[{"p":0},{"p":5}]}', "score codes cleaned", JSON.stringify(evil.r));
+  const p2 = await openApp(browser);
+  await p2.page.goto(MAIN + "#sk=1.1.2.20260912.x.H." + encodeURIComponent('"><img src=x onerror="window.__pwned=1">').replace(/\./g, "%2E") + ".B.1-7-%3Cb%3E~2-8-C.1011~0011");
+  check((await p2.page.textContent("#team-sub")).startsWith('"><img') && !(await p2.page.$("main img, main b:not(:has-text('#'))")) && !(await p2.page.evaluate(() => window.__pwned)),
+    "hostile lineup code shows as plain text");
+  await p2.page.goto(MAIN + "#sk=garbage");
+  check((await p2.page.textContent("#toast")).includes("incomplete") && !(await p2.page.isHidden("nav.tabs")), "a damaged lineup link opens the regular app");
+  await p2.ctx.close();
   check(!problems.length, "no page errors or blocked loads", problems.join(" | "));
   await ctx.close();
 }
@@ -645,14 +789,16 @@ async function iphoneTests(browser) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  // A fake camera, so the scorekeeper's Scan score can open one.
+  const browser = await chromium.launch({ args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
   try {
-    // `node tests/run.js fair` (or planner, screens, iphone, import, safety) runs just that part.
+    // `node tests/run.js fair` (or planner, screens, iphone, scorekeeper, import, safety) runs just that part.
     const only = process.argv[2];
     const run = (name) => !only || only === name;
     if (run("planner")) await plannerTests(browser);
     if (run("screens")) { await flowTests(browser, "light"); await flowTests(browser, "dark"); }
     if (run("iphone")) await iphoneTests(browser);
+    if (run("scorekeeper")) await scorekeeperTests(browser);
     if (run("import")) await importTests(browser);
     if (run("fair")) await fairnessTests(browser);
     if (run("safety")) await safetyTests(browser);

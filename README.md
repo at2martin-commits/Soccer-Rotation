@@ -11,7 +11,7 @@ how to move your teams over.)
   own players, size (4v4 with no goalie, 6v6, 7v7, 9v9 or 11v11), game format (4 quarters
   or 2 halves) and position setting (Rotate or Stick to positions).
 - **Players**: add players, check off who's here today, and tap a name to rename them,
-  mark who can't play goalie, or pick preferred positions. A kid with a preferred
+  give them a jersey number, mark who can't play goalie, or pick preferred positions. A kid with a preferred
   position plays there more often (and nearby spots on the same line a bit more), but
   still rotates, and every kid gets a turn at forward and defense first. A team can
   instead be set to **Stick to positions** (the default for 9v9 and 11v11): kids play their preferred
@@ -28,6 +28,12 @@ how to move your teams over.)
   same period to swap them. Share sends the lineup as text. Double-tap a player on the field
   to record a goal, and double-tap **+ Opponent goal** on a period when the other team scores;
   the scoreboard keeps the running score. Remove a mistaken goal from the game's Goals list.
+- **Parent scorekeeper**: once a game has a lineup, **Show code** puts up a QR code. A parent
+  points their phone's camera at it and gets the lineup with jersey numbers; they tap a kid
+  when they score (and a button when the other team scores). At the end they tap **Game over**
+  and show a code back: tap **Scan score** and the score fills in and the game is marked
+  played. The codes carry everything (nothing goes through a server); if the camera can't be
+  used, the parent can send the link instead and the coach pastes it.
 - **Game summary**: once a game is marked played, **Share results** sends a picture of the
   game summary (your team and the opponent with home or away, the score, the date, and each
   kid's positions, playing time and goals) through your phone's share menu, or

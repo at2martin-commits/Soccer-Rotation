@@ -61,7 +61,7 @@ asks for changes in plain words.
   pushes, dispatches `pages.yml` on main (Pages only deploys from main).
 - `tests/run.js`: the browser test suite (`node tests/run.js`, about 4 minutes, preinstalled
   Playwright; run it in the background or with a long timeout). `node tests/run.js fair` (or
-  `planner`, `screens`, `iphone`, `safety`) runs one part. "Fair play" stress-tests every size,
+  `planner`, `screens`, `iphone`, `scorekeeper`, `safety`) runs one part. "Fair play" stress-tests every size,
   formation and style with up to 8 extra kids and random favorites, plus 8-game seasons.
 - `THIRD_PARTY_NOTICES.md`: Material Icons (Apache 2.0, full text included), fonts (SIL OFL 1.1).
   If you add an icon, take it from Material Icons and add its name to the list there.
@@ -96,17 +96,27 @@ asks for changes in plain words.
    fetches anything itself). Titles "Home Vs Away" (Blue Sombrero) or "Away @ Home"; practices and
    other non-games skipped; your team = the name in the most games (or the team's own name). Games
    matching an existing one (same day, same or no opponent) are updated, not doubled.
-5. **Saving**: `normalize()` cleans saved data and restored backups **field by field** (numbers,
+5. **QR codes** (`qrMatrix`, `qrSVG`): a small built-in QR maker (byte mode, level M or L),
+   checked against jsQR when written; tests compare fingerprints (`QR_PRINTS` in tests/run.js).
+   If you change the maker, re-verify with a real decoder and update the fingerprints.
+6. **Parent scorekeeper** (its own section near the end, before Actions; `scorekeeperLink`/`readScorekeeper`, `scoreResultLink`/`readScoreResult`,
+   `readHash`, `scorekeeperView`, `scanDialog`, `applyScoreDialog`): the coach's QR is a link
+   `…#sk=<lineup>`; opening it shows the parent page (`sk` set, tabs hidden, taps kept under
+   `soccer-rotation-scorekeeper`, never touching the parent's own teams). "Game over" shows
+   `…#skr=<score>`; the coach scans it (BarcodeDetector + camera, Chrome on Android), opens it
+   with the phone's camera app, or pastes it. Applying replaces the game's goals and marks it played.
+   Codes are untrusted: every field is checked like a backup.
+7. **Saving**: `normalize()` cleans saved data and restored backups **field by field** (numbers,
    real dates, known positions, plain text). `commit()` saves to localStorage and, on claude.ai,
    to the viewer's private `db` doc `data/users/<id>/state` (`initCloud`).
-6. **Rendering** (`render`, `playersView`, `gamesView`, `gameView`, `periodsHTML`, `goalsHTML`,
+8. **Rendering** (`render`, `playersView`, `gamesView`, `gameView`, `periodsHTML`, `goalsHTML`,
    `scoreboardHTML`, `playingTimeHTML`, `seasonView`, `archiveView`, `archivedGameView`) and
    **dialogs** (`teamDialog`, `gameDialog`, `playerDialog`, `shareResultsDialog`, `aboutDialog`,
    `backupDialog`, `archiveDialog`, `confirmDialog`). Clicks go through `data-action` (main) and
    `data-d` (dialogs) handlers.
 
 Saved shape: `{version: 3, nextId, currentTeamId, savedAt, teams: [{id, name, formation, format,
-style?, players: [{id, name, goalie, preferred: [POS]}], absent: [id], games: [{id, date, opponent,
+style?, players: [{id, name, number: "" or up to 3 digits, goalie, preferred: [POS]}], absent: [id], games: [{id, date, opponent,
 home: ""|"home"|"away", time: ""|"HH:MM", place, plan: [{positions: {POS: id}, bench: [id], formation?}], formation, format, played,
 names: {id: name}, goals: [{id, p}], oppGoals: [{p}], absent?}], seasonCarry: {id: totals},
 archives: [{id, name, archivedAt, games, carry, names}]}]}`.
