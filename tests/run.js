@@ -372,6 +372,8 @@ async function scorekeeperTests(browser) {
   check(shown.length === coach.players.length && Object.values(q0.positions).concat(q0.bench).every((id) => shown.includes(label(id))) && shown.includes("#12 Ava"),
     "parent sees the 1st quarter lineup with jersey numbers and names", shown.join(", "));
   check(cut === 0, "names are shown in full, not cut off");
+  const opp = await pp.$eval('[data-action="sk-opp"]', (b) => ({ h: b.getBoundingClientRect().height, above: !!(b.compareDocumentPosition(document.querySelector(".pitch")) & Node.DOCUMENT_POSITION_FOLLOWING) }));
+  check(opp.h >= 60 && opp.above, "other team's goal button is big and above the field", JSON.stringify(opp));
   const fwd = q0.positions.CF;
   await pp.click(`[data-action="sk-goal"][data-id="${fwd}"]`);
   check((await pp.textContent(".dlg h2")).startsWith("Goal for"), "tapping a kid asks before adding a goal");

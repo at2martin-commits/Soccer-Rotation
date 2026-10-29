@@ -391,7 +391,12 @@ a.btn.primary { color: var(--accent-ink); }
 /* Number on its own line, then the whole name (wrapping, never cut off). */
 .sk-spot .num { font-family: var(--font-display); font-weight: 700; font-size: 1.3rem; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .sk-spot .who { white-space: normal; overflow: visible; overflow-wrap: anywhere; text-align: center; line-height: 1.15; }
-.sk-opp { padding: 10px; }
+.sk-opp { padding: 0 10px 10px; }
+/* The other team's goal button: big and dark, so it can't be missed next to the white player boxes. */
+.btn.opp-big {
+  width: 100%; min-height: 64px; white-space: normal; text-align: center; font-size: 1.25rem;
+  background: var(--ink); border-color: var(--ink); color: var(--bg);
+}
 .scan-video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: #000000; }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -2663,13 +2668,13 @@ function scorekeeperView() {
     .map((r) => `<div class="prow">${r.map((k) => spot(q.positions[k], POS[k].short)).join("")}</div>`).join("");
   const bench = q.bench.length ? `<div class="bench"><span class="label">Sitting</span><div class="prow">${q.bench.map((id) => spot(id, "SITS")).join("")}</div></div>` : "";
   return `${scoreboardHTML(team, g)}
-    <p class="hint">Tap a player when they score, or the button under the field when ${esc(oppName(g))} scores. This is the coach's plan; if kids switch, tap whoever scored.</p>
+    <p class="hint">Tap a player when they score. When ${esc(oppName(g))} scores, tap the big <strong>${esc(oppName(g))} goal</strong> button. This is the coach's plan; if kids switch, tap whoever scored.</p>
     <div class="sk-periods" role="group" aria-label="Period">${sk.plan.map((_, i) =>
       `<button type="button" data-action="sk-period" data-qi="${i}" aria-pressed="${i === sk.period}" aria-label="${esc(periodName(sk.format, i))}">${periodShort(sk.format, i)}</button>`).join("")}</div>
     <section class="panel period" aria-label="${esc(periodName(sk.format, sk.period))}">
       <div class="period-head"><h2>${esc(periodName(sk.format, sk.period))}</h2></div>
+      <div class="sk-opp"><button class="btn opp-big" type="button" data-action="sk-opp">⚽ + ${esc(oppName(g))} goal</button></div>
       <div class="pitch${q.positions.GK == null ? " no-keeper" : ""}">${rows}</div>${bench}
-      <div class="sk-opp"><button class="btn full" type="button" data-action="sk-opp">+ ${esc(oppName(g))} goal</button></div>
     </section>
     ${goalsHTML(team, g, names, true)}
     <button class="btn primary full" type="button" data-action="sk-done">${ICON.check} Game over: show code for coach</button>`;
