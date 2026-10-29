@@ -173,8 +173,17 @@ async function flowTests(browser, scheme) {
   // Season, archive.
   await p.click("#tab-season");
   check((await p.$$eval(".season tbody tr", (r) => r.map((x) => x.children[1].textContent))).includes("1"), "season totals count played game");
+  const rec = await p.$$eval(".record .rec", (r) => r.map((x) => x.textContent.replace(/\s+/g, "")));
+  check(rec.join(",") === "0Wins,0Losses,1Tie", "season record counts the 1–1 game as a tie", rec.join(","));
+  const mix = await p.evaluate(() => seasonRecord([
+    { played: true, goals: [{}, {}], oppGoals: [{}] }, { played: true, goals: [], oppGoals: [{}] },
+    { played: true, goals: [{}], oppGoals: [{}] }, { played: false, goals: [{}], oppGoals: [] }]));
+  check(mix.w === 1 && mix.l === 1 && mix.t === 1 && mix.gf === 3 && mix.ga === 3, "record: wins, losses, ties, goals; unplayed games skipped", JSON.stringify(mix));
   await p.click('[data-action="archive-season"]'); await p.click('[data-d="ok"]');
+  check(!(await p.$$(".record")).length, "new season starts with no record");
+  check((await p.textContent('[data-action="open-archive"]')).includes("0–0–1"), "past season row shows its record");
   await p.click('[data-action="open-archive"]');
+  check((await p.$$(".record .rec")).length === 3, "archived season shows its record");
   const archRows = await p.$$(".season tbody tr");
   await p.click(".game-row");
   check(archRows.length >= 8 && (await p.$$(".period")).length === 4 && !(await p.$$('.period [data-action]')).length, "archive keeps totals and read-only lineups");
