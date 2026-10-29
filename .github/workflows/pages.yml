@@ -1,5 +1,7 @@
 name: Publish web app
 
+# Publishes main at the site root and the beta branch at /beta/. GitHub Pages only deploys
+# from main, so pushes to beta ask this workflow to run (see beta.yml).
 on:
   push:
     branches: [main]
@@ -23,10 +25,24 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main
+          path: main
+      - name: Check out beta (if it exists)
+        id: beta
+        continue-on-error: true
+        uses: actions/checkout@v5
+        with:
+          ref: beta
+          path: beta
       - uses: actions/configure-pages@v5
-      # Adds a doctype and a Content Security Policy for the standalone copy (see the script).
+      # Adds a doctype and a Content Security Policy to each copy (see the script).
       - name: Build site
-        run: python3 tools/build-site.py
+        run: |
+          python3 main/tools/build-site.py main/web/index.html site
+          if [ "${{ steps.beta.outcome }}" = "success" ]; then
+            python3 beta/tools/build-site.py beta/web/index.html site/beta --beta
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

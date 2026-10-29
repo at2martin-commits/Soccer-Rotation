@@ -48,9 +48,19 @@ in the team menu to keep a copy or move to another phone.
 
 The whole app is `web/index.html`: plain HTML, CSS and JavaScript, with no libraries.
 Pushing to `main` publishes it to GitHub Pages via `.github/workflows/pages.yml`, which
-runs `tools/build-site.py` to add the doctype and the Content Security Policy.
+runs `tools/build-site.py` to add the doctype and the Content Security Policy, and also
+builds the `beta` branch into `/beta/`. Pushes to `beta` trigger that rebuild through
+`.github/workflows/beta.yml`.
 
 An earlier native Android version lives in the Git history (removed in favor of the web app).
+
+## Beta
+
+New work happens on the `beta` branch, published at
+https://at2martin-commits.github.io/Soccer-Rotation/beta/ with a **BETA** tag in the header.
+The beta keeps its own saved data, so trying it never touches teams in the regular version
+(use **Back up or move data** to copy teams over for testing). When a beta is ready, `beta`
+is merged into `main`, which updates the regular link.
 
 ## Credits
 
