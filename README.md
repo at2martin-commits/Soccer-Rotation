@@ -1,6 +1,6 @@
 # Soccer Rotation
 
-A web app that builds fair playing-time lineups for youth soccer teams. Version 1.1.
+A web app that builds fair playing-time lineups for youth soccer teams. Version 1.2.
 
 **Open it on any phone:** https://at2martin-commits.github.io/Soccer-Rotation/
 Tap **Add to home screen** in the app to put it on your phone like an app; it then opens
