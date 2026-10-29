@@ -388,7 +388,9 @@ a.btn.primary { color: var(--accent-ink); }
   font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; letter-spacing: 0.04em;
 }
 .sk-periods button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.spot .who b { font-variant-numeric: tabular-nums; }
+/* Number on its own line, then the whole name (wrapping, never cut off). */
+.sk-spot .num { font-family: var(--font-display); font-weight: 700; font-size: 1.3rem; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.sk-spot .who { white-space: normal; overflow: visible; overflow-wrap: anywhere; text-align: center; line-height: 1.15; }
 .sk-opp { padding: 10px; }
 .scan-video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: #000000; }
 
@@ -2652,8 +2654,8 @@ function scorekeeperView() {
     const p = byId[id];
     const goals = sk.goals.filter((x) => x.id === id && x.p === sk.period).length;
     const badge = goals ? `<span class="goal" aria-label="${goals} ${goals === 1 ? "goal" : "goals"}">⚽${goals > 1 ? goals : ""}</span>` : "";
-    return `<button type="button" class="spot" data-action="sk-goal" data-id="${id}">${badge}<span class="pos">${label}</span>
-      <span class="who">${p.number ? `<b>#${esc(p.number)}</b> ` : ""}${esc(p.name)}</span></button>`;
+    return `<button type="button" class="spot sk-spot" data-action="sk-goal" data-id="${id}" aria-label="${esc(skName(p))}, ${label}">${badge}<span class="pos">${label}</span>
+      ${p.number ? `<span class="num">#${esc(p.number)}</span>` : ""}<span class="who">${esc(p.name)}</span></button>`;
   };
   const rows = ["FORWARD", "MIDFIELD", "DEFENSE", "GOAL"]
     .map((line) => POS_ORDER.filter((k) => POS[k].line === line && q.positions[k] != null))

@@ -366,10 +366,12 @@ async function scorekeeperTests(browser) {
   await pp.goto(MAIN + link.slice(link.indexOf("#")));
   check((await pp.textContent("#team-name")) === "Scorekeeper" && (await pp.isHidden("nav.tabs")) && (await pp.innerText(".scoreboard")).includes("Tigers-2 (A.~)"),
     "parent gets the scorekeeper page with both teams");
-  const shown = await pp.$$eval(".pitch .spot, .bench .spot", (s) => s.map((x) => x.querySelector(".who").textContent.trim()));
+  const shown = await pp.$$eval(".pitch .spot, .bench .spot", (s) => s.map((x) => [x.querySelector(".num"), x.querySelector(".who")].filter(Boolean).map((e) => e.textContent.trim()).join(" ")));
+  const cut = await pp.$$eval(".sk-spot .who", (s) => s.filter((x) => x.scrollWidth > x.clientWidth + 1).length);
   const q0 = coach.plan[0], label = (id) => { const k = coach.players.find((x) => x[0] === id); return (k[2] ? "#" + k[2] + " " : "") + k[1]; };
   check(shown.length === coach.players.length && Object.values(q0.positions).concat(q0.bench).every((id) => shown.includes(label(id))) && shown.includes("#12 Ava"),
-    "parent sees the 1st quarter lineup with jersey numbers", shown.join(", "));
+    "parent sees the 1st quarter lineup with jersey numbers and names", shown.join(", "));
+  check(cut === 0, "names are shown in full, not cut off");
   const fwd = q0.positions.CF;
   await pp.click(`[data-action="sk-goal"][data-id="${fwd}"]`);
   check((await pp.textContent(".dlg h2")).startsWith("Goal for"), "tapping a kid asks before adding a goal");
