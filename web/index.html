@@ -1839,7 +1839,7 @@ function calDate(v) {
 
 /** Games found in a calendar: both team names, which one is home, date, time and place. */
 function calendarGames(raw) {
-  return parseCalendar(raw).map((e) => {
+  const games = parseCalendar(raw).map((e) => {
     const title = e.SUMMARY.replace(/\s+/g, " ");
     if (/\b(practice|training|pictures?|photos?|meeting|clinic|tryouts?|party|ceremony)\b/i.test(title)) return null;
     let m = title.match(/^(.+?)\s+(?:vs\.?|v\.?|versus)\s+(.+)$/i), home, away;
@@ -1847,10 +1847,24 @@ function calendarGames(raw) {
     else if ((m = title.match(/^(.+?)\s+@\s+(.+)$/))) [away, home] = [m[1], m[2]];
     else return null;
     const clean = (n) => text(n.replace(/^(game|match)\s*[:-]\s*/i, "").trim());
-    // Blue Sombrero puts the field in the description; other calendars use LOCATION.
-    const place = e.LOCATION || (e.DESCRIPTION || "").split("\n").map((x) => x.replace(/^(location|field|venue)\s*:\s*/i, "").trim()).filter(Boolean).slice(0, 2).join(", ");
+    // Blue Sombrero's description is the field ("673 Cottrellville 06U/08U > Field 2") and its
+    // LOCATION the street address; other calendars put the place in LOCATION.
+    const desc = (e.DESCRIPTION || "").split("\n").map((x) => x.trim()).filter(Boolean);
+    const field = desc.length === 1 && desc[0].length <= 80 && />|\bfield\b/i.test(desc[0]) ? desc[0] : "";
+    const place = field ? field.replace(/^\d+\s+/, "").replace(/\s*>\s*/g, ", ")
+      : e.LOCATION ? e.LOCATION.replace(/,(?=\S)/g, ", ")
+      : desc.map((x) => x.replace(/^(location|field|venue)\s*:\s*/i, "")).slice(0, 2).join(", ");
     return { home: clean(home), away: clean(away), date: e.start.date, time: e.start.time, place: text(place) };
   }).filter((x) => x && x.home && x.away && x.home.toLowerCase() !== x.away.toLowerCase());
+  // Blue Sombrero names teams like "673-08U-Francis": drop the region and age group that every
+  // team in the calendar shares, so the opponent reads "Francis".
+  const names = games.flatMap((x) => [x.home, x.away]);
+  let pre = names.reduce((a, n) => { let i = 0; while (i < a.length && i < n.length && a[i].toLowerCase() === n[i].toLowerCase()) i++; return a.slice(0, i); }, names[0] || "");
+  pre = pre.slice(0, Math.max(pre.lastIndexOf("-"), pre.lastIndexOf(" ")) + 1);
+  if (/\d/.test(pre) && names.every((n) => n.slice(pre.length).trim())) {
+    games.forEach((x) => { x.home = x.home.slice(pre.length).trim(); x.away = x.away.slice(pre.length).trim(); });
+  }
+  return games;
 }
 
 /** What importing would do for `mine`: new games, and existing games (same day and opponent) to update. */
@@ -1927,10 +1941,13 @@ function readCalendar(t, raw) {
   games.forEach((x) => [x.home, x.away].forEach((n) => counts.set(n, (counts.get(n) || 0) + 1)));
   const teams = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b));
   const mine = teams.find((n) => n.toLowerCase() === t.name.toLowerCase()) || teams[0];
+  // A calendar from a finished season has only past games: show those rather than nothing.
+  const hasUpcoming = importPlan(t, games, mine, true).length > 0;
   openDialog(`<h2>Import schedule</h2>
     <div class="group"><label class="lbl" for="cal-team">Your team in this calendar</label>
       <select class="field" id="cal-team">${teams.map((n) => `<option value="${esc(n)}" ${n === mine ? "selected" : ""}>${esc(n)} (${counts.get(n)} ${counts.get(n) === 1 ? "game" : "games"})</option>`).join("")}</select></div>
-    <label class="switch-row" for="cal-upcoming"><span>Only games from today on</span><input type="checkbox" id="cal-upcoming" checked></label>
+    <label class="switch-row" for="cal-upcoming"><span>Only games from today on</span><input type="checkbox" id="cal-upcoming" ${hasUpcoming ? "checked" : ""}></label>
+    ${hasUpcoming ? "" : `<p class="hint">This calendar has no games from today on, so past games are shown.</p>`}
     <p class="hint" id="cal-summary"></p>
     <ul class="cal-list" id="cal-list"></ul>
     <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>

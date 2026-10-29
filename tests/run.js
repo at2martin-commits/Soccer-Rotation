@@ -596,6 +596,28 @@ async function importTests(browser) {
   check(JSON.stringify(cleaned) === '[["",80],["",15]]', "bad times and long or odd fields are cleaned", JSON.stringify(cleaned));
   check(!problems.length && !(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "no page errors, no sideways scrolling", problems.join(" | "));
   await ctx.close();
+  // A real Blue Sombrero export (names and address changed), from a finished season.
+  const real = ["BEGIN:VCALENDAR", "METHOD:PUBLISH", "PRODID:-//github.com/ical-org/ical.net//NONSGML ical.net 4.0//EN", "VERSION:2.0",
+    ...[["20261002", "Field 2", "673-08U-Smith Vs 673-08U-Jones/Lee"], ["20261009", "Field 3", "673-08U-Jones/Lee Vs 673-08U-Brown/Green/Hill"], ["20261012", "Field 2", "673-08U-Smith Vs 673-08U-Jones/Lee"]]
+      .map(([d, f, title], i) => ["BEGIN:VEVENT", "CLASS:PUBLIC", `DESCRIPTION:673 Townville 06U/08U > ${f}`, `DTEND:${d}T230000Z`, "DTSTAMP:20261029T193411", `DTSTART:${d}T220000Z`,
+        "LOCATION:100 Main Road\\,Smalltown\\,MI-48000 US", "PRIORITY:5", "SEQUENCE:0", `SUMMARY:${title}`, `UID:2026102919341112242382${i}`, "END:VEVENT"].join("\r\n")),
+    "END:VCALENDAR", ""].join("\r\n");
+  const c2 = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "America/Detroit" });
+  const q = await c2.newPage();
+  await q.goto(MAIN);
+  await q.click("text=Try it with sample names");
+  await q.click("#tab-games"); await q.click('[data-action="import-schedule"]');
+  await q.setInputFiles("#cal-file", { name: "calendar.ics", mimeType: "text/calendar", buffer: Buffer.from(real) });
+  await q.waitForSelector("#cal-team");
+  const team2 = await q.$eval("#cal-team", (x) => x.value), up = await q.isChecked("#cal-upcoming");
+  await q.click('[data-d="import"]');
+  const got = await q.evaluate(() => team().games.map((g) => [g.date, g.time, g.opponent, g.home, g.place]).sort());
+  check(team2 === "Jones/Lee" && !up, "real Blue Sombrero file: your team found; finished season shows its past games", team2);
+  check(JSON.stringify(got) === JSON.stringify([
+    ["2026-10-02", "18:00", "Smith", "away", "Townville 06U/08U, Field 2"],
+    ["2026-10-09", "18:00", "Brown/Green/Hill", "home", "Townville 06U/08U, Field 3"],
+    ["2026-10-12", "18:00", "Smith", "away", "Townville 06U/08U, Field 2"]]), "real file: opponents without the region code, Michigan times, field from the description", JSON.stringify(got));
+  await c2.close();
 }
 
 // ---------------------------------------------------------------- iPhone home screen help
