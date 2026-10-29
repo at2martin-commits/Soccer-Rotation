@@ -1,6 +1,6 @@
 # Soccer Rotation
 
-A web app that builds fair playing-time lineups for youth soccer teams. Version 1.0.
+A web app that builds fair playing-time lineups for youth soccer teams. Version 1.1.
 
 **Open it on any phone:** https://at2martin-commits.github.io/Soccer-Rotation/
 To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Android, ⋮ → Add to Home screen.
@@ -15,16 +15,18 @@ To keep it on your home screen: on iPhone, Share → Add to Home Screen; on Andr
   still rotates, and every kid gets a turn at forward and defense first. A team can
   instead be set to **Stick to positions** (the default for 9v9): kids play their preferred
   spot every period they're on the field, and others keep the spot they've been playing.
-- **Games**: add the dates from your schedule (with an optional opponent). On game day,
-  open the game and make its lineup. Past games keep their lineups to look back on.
+- **Games**: add the dates from your schedule, with an optional opponent and home or away.
+  On game day, open the game and make its lineup. Past games keep their lineups to look back on.
 - **Lineups**: each game's lineup covers every period at once. Play time is split as evenly as
   possible, nobody sits twice in a row, goalie turns are spread out, and kids move
   between positions. Tap two players in a period to swap them. Share sends the lineup
-  as text. Double-tap a player on the field to record a goal; remove a mistaken one from
-  the game's Goals list.
-- **Game results**: once a game is marked played, **Share results** sends a picture of the
-  playing-time table (date, opponent, positions, goals, absences) through your phone's share
-  menu (text, email or any app), or **Download picture** saves it.
+  as text. Double-tap a player on the field to record a goal, and tap **+ Opponent goal** on a
+  period when the other team scores; the scoreboard keeps the running score. Remove a
+  mistaken goal from the game's Goals list.
+- **Game summary**: once a game is marked played, **Share results** sends a picture of the
+  game summary (your team and the opponent with home or away, the score, the date, and each
+  kid's positions, playing time and goals) through your phone's share menu, or
+  **Download picture** saves it.
 - **Season**: tap **Mark as played** after a game and future lineups give extra time to
   kids who've sat more, and spread goalie turns across the season. **Archive season**
   saves the totals and played games under **Past seasons** (with each game's lineup) and

@@ -156,6 +156,32 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; mar
 .period { padding: 0; overflow: hidden; gap: 0; }
 .period-head { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 14px; }
 .period-head h2 { font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.period-head { align-items: center; gap: 8px; }
+.opp-goal {
+  min-height: 36px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+  font-weight: 700; font-size: 0.85rem; color: var(--muted); white-space: nowrap; max-width: 60%; overflow: hidden; text-overflow: ellipsis;
+  touch-action: manipulation;
+}
+.scoreboard {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px;
+}
+.sb-team { min-width: 0; display: grid; }
+.sb-opp { text-align: right; }
+.sb-name { font-weight: 700; overflow-wrap: anywhere; line-height: 1.2; }
+.sb-side { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+.sb-score { font-family: var(--font-display); font-weight: 700; font-size: 2rem; line-height: 1; font-variant-numeric: tabular-nums; display: flex; gap: 6px; }
+.sb-score span { color: var(--muted); }
+.goal-list li.opp { color: var(--muted); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.seg label { position: relative; }
+.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; }
+.seg span {
+  display: grid; place-items: center; min-height: 44px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); font-weight: 700;
+}
+.seg input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.seg input:focus-visible + span { outline: 3px solid var(--select); outline-offset: 2px; }
 .pitch {
   position: relative; padding: 14px 10px; display: grid; gap: 10px;
   background: repeating-linear-gradient(180deg, var(--pitch) 0 36px, var(--pitch-stripe) 36px 72px);
@@ -607,7 +633,7 @@ function swap(plan, qi, a, b) {
 function lineupText(t, g) {
   const players = planPlayers(t, g);
   const names = gameNames(t, g);
-  const lines = [t.name + " – " + longDate(g.date) + (g.opponent ? " vs " + g.opponent : "")];
+  const lines = [t.name + " – " + longDate(g.date) + (g.opponent ? " vs " + g.opponent : "") + (g.home ? " (" + SIDES[g.home] + ")" : "")];
   g.plan.forEach((q, i) => {
     lines.push("", periodName(g.format, i));
     POS_ORDER.forEach((k) => { if (q.positions[k] != null) lines.push("  " + POS[k].short + ": " + names[q.positions[k]]); });
@@ -617,17 +643,18 @@ function lineupText(t, g) {
   summarize(g.plan, players).forEach((x) => lines.push("  " + names[x.id] + ": " + x.played + "/" + g.plan.length));
   const scorers = Object.entries(goalsByPlayer([g]));
   if (scorers.length) lines.push("", "Goals: " + scorers.map(([id, n]) => names[id] + (n > 1 ? " " + n : "")).join(", "));
+  if (g.goals.length || g.oppGoals.length) lines.push("Score: " + scoreLine(t, g));
   return lines.join("\n");
 }
 
-// ------------------------------------------------------------------ League report
+// ------------------------------------------------------------------ Game summary
 
 function periodShort(format, i) {
   if (format === "QUARTERS") return "Q" + (i + 1);
   if (format === "HALVES") return "H" + (i + 1);
   return (i < 2 ? "1" : "2") + (i % 2 === 0 ? "A" : "B");
 }
-/** Everything the league report shows, in one place for the text, table and picture versions. */
+/** Everything the game summary shows, for both the preview and the picture. */
 function reportData(t, g) {
   const names = gameNames(t, g);
   const players = planPlayers(t, g);
@@ -649,20 +676,27 @@ function reportData(t, g) {
       goals: goals[x.id] || 0,
     })),
     absent: absentIds.map((id) => names[id]).filter(Boolean),
-    totalGoals: g.goals.length,
+    // Facts at the top: always my team first, marked home or away, then the opponent and score.
+    facts: [
+      ["Team", withSide(t.name, sideOf(g, true))],
+      ["Opponent", withSide(oppName(g), sideOf(g, false))],
+      ["Score", scoreLine(t, g)],
+      ["Date", toDate(g.date).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })],
+      ["Game", FORMATIONS[g.formation].label.split(":")[0] + ", " + FORMATS[g.format].label],
+    ],
   };
 }
 function reportSubject(d) {
-  return d.title + " – " + d.date + " – playing time";
+  return d.title + " – " + d.date + " – game summary";
 }
 function reportHTML(d) {
   const cell = "border:1px solid #c9d3c7;padding:6px 10px;text-align:center;color:#18241c;font-family:Arial,Helvetica,sans-serif;font-size:14px;";
   const head = "background:#1f7a3f;color:#ffffff;font-weight:bold;";
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#18241c;">
-    <p style="margin:0 0 6px;font-size:18px;font-weight:bold;">Playing time report</p>
+    <p style="margin:0 0 6px;font-size:18px;font-weight:bold;">Game summary</p>
     <table style="border-collapse:collapse;font-size:14px;color:#18241c;margin:0 0 10px;">
-      ${[["Team", d.team], ["Opponent", d.opponent || "—"], ["Date", d.date], ["Game", d.game]].map(([k, v]) =>
-        `<tr><td style="padding:1px 12px 1px 0;color:#4a5a4f;font-weight:bold;font-family:Arial,Helvetica,sans-serif;font-size:14px;">${k}</td><td style="padding:1px 0;color:#18241c;font-family:Arial,Helvetica,sans-serif;font-size:14px;">${esc(v)}</td></tr>`).join("")}
+      ${d.facts.map(([k, v]) =>
+        `<tr><td style="padding:1px 12px 1px 0;color:#4a5a4f;font-weight:bold;font-family:Arial,Helvetica,sans-serif;font-size:14px;">${k}</td><td style="padding:1px 0;color:#18241c;font-family:Arial,Helvetica,sans-serif;font-size:14px;${k === "Score" ? "font-weight:bold;" : ""}">${esc(v)}</td></tr>`).join("")}
     </table>
     <table style="border-collapse:collapse;font-size:14px;color:#18241c;background:#ffffff;">
       <tr><th style="${cell}${head}text-align:left;">Player</th>${d.periods.map((p) => `<th style="${cell}${head}">${p}</th>`).join("")}<th style="${cell}${head}">Played</th><th style="${cell}${head}">Goals</th></tr>
@@ -680,7 +714,7 @@ function reportCanvas(d) {
   const nameW = Math.max(150, ...d.rows.map((r) => probe.measureText(r.name).width + 28));
   const tableW = nameW + cellW * d.periods.length + playedW + goalsW;
   const notes = [d.legend, "Absent: " + (d.absent.length ? d.absent.join(", ") : "none")].filter(Boolean);
-  const facts = [["Team", d.team], ["Opponent", d.opponent || "—"], ["Date", d.date], ["Game", d.game]];
+  const facts = d.facts;
   const labelW = 100, factH = 28;
   probe.font = "18px 'Source Sans 3', Arial, sans-serif";
   const factsW = labelW + Math.max(...facts.map(([, v]) => probe.measureText(v).width));
@@ -696,14 +730,14 @@ function reportCanvas(d) {
   x.fillRect(0, 0, width, height);
   x.fillStyle = "#1f7a3f";
   x.font = "700 28px 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif";
-  x.fillText("Playing time report", pad, pad + 24);
+  x.fillText("Game summary", pad, pad + 24);
   facts.forEach(([k, v], i) => {
     const y = pad + 40 + factH * i + 20;
     x.fillStyle = "#4a5a4f";
     x.font = "700 16px 'Source Sans 3', Arial, sans-serif";
     x.fillText(k.toUpperCase(), pad, y);
     x.fillStyle = "#18241c";
-    x.font = (k === "Team" || k === "Opponent" ? "700 " : "") + "18px 'Source Sans 3', Arial, sans-serif";
+    x.font = (k === "Date" || k === "Game" ? "" : "700 ") + "18px 'Source Sans 3', Arial, sans-serif";
     x.fillText(v, pad + labelW, y);
   });
   const cols = [["Player", nameW, "left"], ...d.periods.map((p) => [p, cellW, "center"]), ["Played", playedW, "center"], ["Goals", goalsW, "center"]];
@@ -784,6 +818,7 @@ function cleanGame(g, t, newId) {
     id: num(g.id) ?? newId(),
     date: isDate(g.date) ? g.date : todayStr(),
     opponent: text(g.opponent),
+    home: g.home === "home" || g.home === "away" ? g.home : "",
     plan: cleanPlan(g.plan),
     formation: FORMATIONS[g.formation] ? g.formation : t.formation,
     format: FORMATS[g.format] ? g.format : t.format,
@@ -792,6 +827,9 @@ function cleanGame(g, t, newId) {
     goals: (Array.isArray(g.goals) ? g.goals : [])
       .filter((x) => x && num(x.id) != null && Number.isInteger(num(x.p)) && num(x.p) >= 0)
       .map((x) => ({ id: num(x.id), p: num(x.p) })),
+    oppGoals: (Array.isArray(g.oppGoals) ? g.oppGoals : [])
+      .filter((x) => x && Number.isInteger(num(x.p)) && num(x.p) >= 0)
+      .map((x) => ({ p: num(x.p) })),
     ...(Array.isArray(g.absent) ? { absent: idList(g.absent) } : {}),
   };
 }
@@ -833,7 +871,7 @@ function normalize(s) {
       const carry = cleanTotals(raw.season);
       const plan = cleanPlan(raw.plan);
       if (plan) {
-        const g = { id: newId(), date: todayStr(), opponent: "", plan, formation: t.formation, format: t.format, played: !!raw.planSaved, names: {}, goals: [] };
+        const g = { id: newId(), date: todayStr(), opponent: "", plan, formation: t.formation, format: t.format, played: !!raw.planSaved, names: {}, goals: [], oppGoals: [], home: "" };
         if (g.played) {
           summarize(g.plan, planPlayers(t, g)).forEach((x) => {
             const c = carry[x.id];
@@ -952,6 +990,11 @@ function seasonTotals(t, excludeId) {
   });
   return totals;
 }
+const SIDES = { home: "Home", away: "Away" };
+const oppName = (g) => g.opponent || "Opponent";
+const sideOf = (g, ours) => (g.home ? SIDES[ours ? g.home : g.home === "home" ? "away" : "home"] : "");
+const withSide = (name, side) => (side ? name + " (" + side + ")" : name);
+const scoreLine = (t, g) => `${t.name} ${g.goals.length} – ${(g.oppGoals || []).length} ${oppName(g)}`;
 const goalCount = (g, id, period) => g.goals.filter((x) => x.id === id && (period == null || x.p === period)).length;
 function goalsByPlayer(games) {
   const out = {};
@@ -1065,8 +1108,8 @@ function gamesView(t) {
         <span class="dow">${esc(d.toLocaleDateString(undefined, { weekday: "short" }))}</span>
       </span>
       <span class="gmain"><strong>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</strong>
-        <small>${g.date === today ? "Today · " : ""}${esc(longDate(g.date))}</small></span>
-      <span class="status s-${cls}">${label}</span>
+        <small>${g.date === today ? "Today · " : ""}${g.home ? SIDES[g.home] + " · " : ""}${esc(longDate(g.date))}</small></span>
+      <span class="status s-${cls}">${label}${g.played ? " " + g.goals.length + "–" + g.oppGoals.length : ""}</span>
     </button>`;
   };
   let html = `
@@ -1093,10 +1136,11 @@ function gameView(t, g) {
     <div class="game-head">
       <button class="back" type="button" data-action="back">${ICON.back} All games</button>
       <div class="gh-row">
-        <div class="gh-title"><h2>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</h2><p class="hint">${esc(longDate(g.date))}</p></div>
-        <button class="icon-btn" type="button" data-action="edit-game" aria-label="Edit game date or opponent">${ICON.edit}</button>
+        <div class="gh-title"><h2>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</h2><p class="hint">${g.home ? SIDES[g.home] + " · " : ""}${esc(longDate(g.date))}</p></div>
+        <button class="icon-btn" type="button" data-action="edit-game" aria-label="Edit game date, opponent or home/away">${ICON.edit}</button>
       </div>
-    </div>`;
+    </div>
+    ${plan ? scoreboardHTML(t, g) : ""}`;
 
   if (!g.played) {
     html += `<div class="btn-row">
@@ -1117,21 +1161,13 @@ function gameView(t, g) {
       : "Add your players on the Players tab first."}</p>`;
   }
   if (changed) html += `<div class="warn">Attendance changed since this lineup was made. Tap New lineup to include the right kids.</div>`;
-  html += `<p class="hint">Tap two players in the same box to swap them. Double-tap a player on the field to add a goal.${g.played ? " Changes update the season totals." : ""} ★ marks a preferred spot.</p>`;
+  html += `<p class="hint">Tap two players in the same box to swap them. Double-tap a player on the field to add a goal; tap <strong>+ ${esc(oppName(g))} goal</strong> when they score.${g.played ? " Changes update the season totals." : ""} ★ marks a preferred spot.</p>`;
 
   const byId = Object.fromEntries(t.players.map((p) => [p.id, p]));
   const names = gameNames(t, g);
   html += periodsHTML(g, names, byId, true);
 
-  if (g.goals.length) {
-    const list = g.goals
-      .map((x, i) => ({ ...x, i }))
-      .sort((a, b) => a.p - b.p || a.i - b.i)
-      .map((x) => `<li><span><span class="gp">${esc(periodName(g.format, x.p))}</span> ${esc(names[x.id] || "—")}</span>
-        <button class="icon-btn" type="button" data-action="remove-goal" data-i="${x.i}" aria-label="Remove ${esc(names[x.id] || "")}'s goal in ${esc(periodName(g.format, x.p))}">✕</button></li>`)
-      .join("");
-    html += `<section class="panel"><h2>Goals · ${g.goals.length}</h2><ul class="goal-list">${list}</ul></section>`;
-  }
+  html += goalsHTML(t, g, names, true);
 
   html += playingTimeHTML(g, planPlayers(t, g).map((p) => p.id), names);
   if (g.played) html += `<button class="btn" type="button" data-action="unmark-played">Mark as not played</button>`;
@@ -1166,10 +1202,32 @@ function periodsHTML(g, names, byId, interactive) {
       ? `<div class="bench"><span class="label">Sitting</span><div class="prow">${q.bench.map((_, i) => spot("B:" + i, "SITS")).join("")}</div></div>`
       : "";
     html += `<section class="panel period" aria-label="${esc(periodName(g.format, qi))}">
-      <div class="period-head"><h2>${esc(periodName(g.format, qi))}</h2></div>
+      <div class="period-head"><h2>${esc(periodName(g.format, qi))}</h2>
+        ${interactive ? `<button class="opp-goal" type="button" data-action="opp-goal" data-qi="${qi}">+ ${esc(oppName(g))} goal</button>` : ""}</div>
       <div class="pitch${q.positions.GK == null ? " no-keeper" : ""}">${rows}</div>${bench}</section>`;
   });
   return html;
+}
+
+function scoreboardHTML(t, g) {
+  const side = (ours) => (g.home ? `<span class="sb-side">${sideOf(g, ours)}</span>` : "");
+  return `<div class="scoreboard" aria-label="Score: ${esc(scoreLine(t, g))}">
+    <div class="sb-team"><span class="sb-name">${esc(t.name)}</span>${side(true)}</div>
+    <div class="sb-score">${g.goals.length}<span>–</span>${g.oppGoals.length}</div>
+    <div class="sb-team sb-opp"><span class="sb-name">${esc(oppName(g))}</span>${side(false)}</div>
+  </div>`;
+}
+
+/** Both teams' goals in period order; `interactive` adds a remove button to each. */
+function goalsHTML(t, g, names, interactive) {
+  const items = [
+    ...g.goals.map((x, i) => ({ p: x.p, who: names[x.id] || "—", kind: "remove-goal", i })),
+    ...g.oppGoals.map((x, i) => ({ p: x.p, who: oppName(g), kind: "remove-opp-goal", i, opp: true })),
+  ].sort((a, b) => a.p - b.p || (a.opp === b.opp ? a.i - b.i : a.opp ? 1 : -1));
+  if (!items.length) return "";
+  const list = items.map((x) => `<li${x.opp ? ' class="opp"' : ""}><span><span class="gp">${esc(periodName(g.format, x.p))}</span> ${esc(x.who)}</span>
+    ${interactive ? `<button class="icon-btn" type="button" data-action="${x.kind}" data-i="${x.i}" aria-label="Remove ${esc(x.who)} goal in ${esc(periodName(g.format, x.p))}">✕</button>` : ""}</li>`).join("");
+  return `<section class="panel"><h2>Goals · ${esc(t.name)} ${g.goals.length}, ${esc(oppName(g))} ${g.oppGoals.length}</h2><ul class="goal-list">${list}</ul></section>`;
 }
 
 function playingTimeHTML(g, ids, names) {
@@ -1249,11 +1307,11 @@ function archivedGameView(t, a, g) {
   return `
     <div class="game-head">
       <button class="back" type="button" data-action="archive-game-back">${ICON.back} ${esc(a.name)}</button>
-      <div class="gh-title"><h2>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</h2><p class="hint">${esc(longDate(g.date))} · ${esc(a.name)}</p></div>
+      <div class="gh-title"><h2>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</h2><p class="hint">${g.home ? SIDES[g.home] + " · " : ""}${esc(longDate(g.date))} · ${esc(a.name)}</p></div>
     </div>
+    ${g.plan ? scoreboardHTML(t, g) : ""}
     ${periodsHTML(g, names, {}, false)}
-    ${g.goals.length ? `<section class="panel"><h2>Goals · ${g.goals.length}</h2><ul class="goal-list">${g.goals.slice().sort((x, y) => x.p - y.p)
-      .map((x) => `<li><span><span class="gp">${esc(periodName(g.format, x.p))}</span> ${esc(names[x.id] || "—")}</span></li>`).join("")}</ul></section>` : ""}
+    ${goalsHTML(t, g, names, false)}
     ${playingTimeHTML(g, planIds(g), names)}`;
 }
 
@@ -1415,6 +1473,9 @@ function gameDialog(t, g) {
       <input class="field" type="date" id="game-date" value="${date}"></div>
     <div class="group"><label class="lbl" for="game-opp">Opponent <span class="hint">(optional)</span></label>
       <input class="field" id="game-opp" value="${g ? esc(g.opponent) : ""}" placeholder="e.g. Tigers" autocapitalize="words"></div>
+    <div class="group"><span class="lbl">Home or away</span>
+      <div class="seg" role="radiogroup" aria-label="Home or away">${Object.entries(SIDES).map(([k, v]) => `
+        <label><input type="radio" name="side" id="side-${k}" value="${k}" ${g && g.home === k ? "checked" : ""}><span>${v}</span></label>`).join("")}</div></div>
     <p class="hint" id="game-msg" hidden></p>
     <div class="dlg-actions">
       ${g ? `<button class="btn danger" type="button" data-d="delete" style="margin-right:auto">Delete game</button>` : ""}
@@ -1445,16 +1506,21 @@ function gameDialog(t, g) {
       return;
     }
     const opponent = dlg.querySelector("#game-opp").value.trim();
+    const picked = dlg.querySelector('input[name="side"]:checked');
+    const home = picked ? picked.value : "";
     if (g) {
       g.date = d;
       g.opponent = opponent;
+      g.home = home;
     } else {
-      t.games.push({ id: state.nextId++, date: d, opponent, plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [] });
+      t.games.push({ id: state.nextId++, date: d, opponent, plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [], home });
     }
     commit();
     if (another) {
       gameDialog(t, null);
       dlg.querySelector("#game-date").value = addDays(d, 7);
+      // Leagues often alternate; start the next one on the other side.
+      if (home) dlg.querySelector("#side-" + (home === "home" ? "away" : "home")).checked = true;
       dlg.querySelector("#game-opp").focus();
       toast("Added " + longDate(d));
     } else {
@@ -1570,12 +1636,12 @@ function shareResultsDialog(t, g) {
   function showPicture(blob, note) {
     const out = dlg.querySelector("#picture-out");
     out.hidden = false;
-    out.innerHTML = `<p class="hint">${esc(note)}</p><img alt="Playing time table" src="${URL.createObjectURL(blob)}">`;
+    out.innerHTML = `<p class="hint">${esc(note)}</p><img alt="Game summary" src="${URL.createObjectURL(blob)}">`;
     out.scrollIntoView({ block: "nearest" });
   }
 }
 
-const APP_VERSION = "1.0";
+const APP_VERSION = "1.1";
 const REPO_URL = "https://github.com/at2martin-commits/Soccer-Rotation";
 
 function aboutDialog() {
@@ -1740,7 +1806,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
       gameDialog(t, null);
       break;
     case "quick-game": {
-      const ng = { id: state.nextId++, date: todayStr(), opponent: "", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [] };
+      const ng = { id: state.nextId++, date: todayStr(), opponent: "", home: "", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] };
       t.games.push(ng);
       ui.gameId = ng.id;
       commit();
@@ -1791,6 +1857,20 @@ document.getElementById("main").addEventListener("click", async (e) => {
     case "share-results":
       shareResultsDialog(t, g);
       break;
+    case "opp-goal": {
+      const qi = Number(b.dataset.qi);
+      g.oppGoals.push({ p: qi });
+      ui.selected = null;
+      commit();
+      toast(oppName(g) + " goal · " + periodName(g.format, qi));
+      break;
+    }
+    case "remove-opp-goal": {
+      g.oppGoals.splice(Number(b.dataset.i), 1);
+      commit();
+      toast("Removed " + oppName(g) + " goal");
+      break;
+    }
     case "remove-goal": {
       const [x] = g.goals.splice(Number(b.dataset.i), 1);
       commit();
