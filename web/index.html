@@ -128,6 +128,16 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; mar
 .btn-row { display: flex; gap: 8px; }
 .btn-row > .grow { flex: 1; }
 .full { width: 100%; }
+.install-card {
+  display: grid; grid-template-columns: 48px 1fr; gap: 10px 12px; align-items: center; margin-bottom: 14px;
+  background: var(--surface); border: 2px solid var(--accent); border-radius: var(--radius); padding: 12px 14px;
+}
+.install-icon { width: 48px; height: 48px; border-radius: 12px; }
+.install-text { display: grid; gap: 2px; }
+.install-text span { color: var(--muted); font-size: 0.9rem; line-height: 1.3; }
+.install-btns { grid-column: 1 / -1; display: flex; gap: 8px; }
+.install-btns .btn.primary { flex: 1; }
+.steps { margin: 0 0 12px; padding-left: 1.4em; display: grid; gap: 8px; line-height: 1.4; }
 .warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius); padding: 12px 14px; font-weight: 600; }
 .empty { text-align: center; padding: 28px 16px; display: grid; gap: 12px; justify-items: center; }
 
@@ -1122,6 +1132,55 @@ const ICON = {
   back: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg>',
 };
 
+// ------------------------------------------------------------------ Home screen shortcut
+// Only the GitHub Pages copy can be installed: the build adds a manifest and an offline helper.
+const INSTALLABLE = !!document.querySelector('link[rel="manifest"]') && window.top === window;
+const INSTALL_HIDE_KEY = LOCAL_KEY + "-install-card-hidden";
+let installPrompt = null;
+const isInstalled = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const canInstall = () => INSTALLABLE && !isInstalled();
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; });
+window.addEventListener("appinstalled", () => { installPrompt = null; hideInstallCard(); toast("Added to your home screen"); });
+if (INSTALLABLE && "serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+function installCardHidden() { try { return localStorage.getItem(INSTALL_HIDE_KEY) === "1"; } catch (e) { return false; } }
+function hideInstallCard() { try { localStorage.setItem(INSTALL_HIDE_KEY, "1"); } catch (e) {} render(); }
+function installCard() {
+  if (!canInstall() || installCardHidden()) return "";
+  return `<div class="install-card">
+    <img class="install-icon" alt="" src="${document.querySelector('link[rel="apple-touch-icon"]').href}">
+    <div class="install-text"><strong>Put Soccer Rotation on your home screen</strong>
+      <span>Opens with one tap, like an app. Works at the field without internet.</span></div>
+    <div class="install-btns">
+      <button class="btn primary" type="button" data-action="install">${ICON.plus} Add to home screen</button>
+      <button class="btn" type="button" data-action="install-later">Not now</button>
+    </div>
+  </div>`;
+}
+async function addToHomeScreen() {
+  if (installPrompt) {
+    const p = installPrompt;
+    installPrompt = null; // the browser only lets each prompt be shown once
+    p.prompt();
+    const choice = await p.userChoice.catch(() => null);
+    if (choice && choice.outcome === "accepted") hideInstallCard();
+    return;
+  }
+  // No built-in prompt (iPhone, other browsers, or already added): show the steps instead.
+  const ua = navigator.userAgent;
+  const steps = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+    ? ["Tap the <strong>Share</strong> button (the square with an arrow) at the bottom or top of Safari.", "Scroll down and tap <strong>Add to Home Screen</strong>.", "Tap <strong>Add</strong>."]
+    : /SamsungBrowser/.test(ua)
+    ? ["Tap the <strong>menu</strong> button (three lines) at the bottom of the screen.", "Tap <strong>Add page to</strong>, then <strong>Home screen</strong>.", "Tap <strong>Add</strong>."]
+    : /Android/.test(ua)
+    ? ["Tap the <strong>⋮</strong> menu at the top right of Chrome.", "Tap <strong>Add to Home screen</strong> (it may say <strong>Install app</strong>).", "Tap <strong>Install</strong> or <strong>Add</strong>."]
+    : ["Look for the <strong>install</strong> icon at the right end of the address bar, or open the browser's menu.", "Choose <strong>Install Soccer Rotation</strong> (or <strong>Add to Home screen</strong>)."];
+  openDialog(`<h2>Add to your home screen</h2>
+    <ol class="steps">${steps.map((x) => `<li>${x}</li>`).join("")}</ol>
+    <p class="hint">Then open Soccer Rotation from its icon. Your teams stay saved on this phone. If you already added it, look for the icon on your home screen.</p>
+    <div class="dlg-actions"><button class="btn primary" type="button" data-d="cancel">Got it</button></div>`);
+}
+
 function render() {
   const t = team();
   document.getElementById("team-name").textContent = t ? t.name : "Soccer Rotation";
@@ -1138,6 +1197,7 @@ function render() {
         <button class="btn primary" type="button" data-action="new-team">${ICON.plus} Create a team</button>
         <button class="btn" type="button" data-action="sample-team">Try it with sample names</button>
       </div>`;
+    main.insertAdjacentHTML("afterbegin", installCard());
     return;
   }
   if (ui.tab === "players") main.innerHTML = playersView(t);
@@ -1145,6 +1205,8 @@ function render() {
     const g = currentGame(t);
     main.innerHTML = g ? gameView(t, g) : gamesView(t);
   } else main.innerHTML = seasonView(t);
+  // Not inside an open game, to keep game day uncluttered.
+  if (!(ui.tab === "games" && currentGame(t))) main.insertAdjacentHTML("afterbegin", installCard());
 }
 
 function playersView(t) {
@@ -1502,6 +1564,7 @@ function teamMenu() {
   openDialog(`<h2>Teams</h2>
     <div class="team-list">${list}</div>
     <div class="dlg-actions">
+      ${canInstall() ? `<button class="btn" type="button" data-d="install">Add to home screen</button>` : ""}
       <button class="btn" type="button" data-d="backup">Back up or move data</button>
       ${t ? `<button class="btn" type="button" data-d="edit">${ICON.edit} Edit this team</button>` : ""}
       <button class="btn primary" type="button" data-d="new">${ICON.plus} New team</button>
@@ -1510,6 +1573,7 @@ function teamMenu() {
     edit: () => teamDialog(team()),
     new: () => teamDialog(null),
     backup: backupDialog,
+    install: () => { closeDialog(); addToHomeScreen(); },
   });
 }
 
@@ -1521,13 +1585,14 @@ function teamDialog(existing) {
   // A team saved with an older size (4v4, 5v5, 7v7) keeps it as a choice.
   const sizes = TEAM_SIZES.includes(sizeOf(f)) ? TEAM_SIZES : [sizeOf(f), ...TEAM_SIZES];
   const sizeOpts = Object.fromEntries(sizes.map((x) => [x, { label: x + (hasGoalie(sizeFormations(x)[0]) ? "" : ", no goalie") }]));
+  // "2 halves, swap mid-half" is no longer offered, except to a team already using it.
+  const formats = Object.fromEntries(Object.entries(FORMATS).filter(([k]) => k !== "HALVES_SPLIT" || k === g));
   const hasOpenLineups = existing && existing.games.some((x) => x.plan && !x.played);
   openDialog(`<h2>${existing ? "Edit team" : "New team"}</h2>
     <div class="group"><label class="lbl" for="team-name-input">Team name</label>
       <input class="field" id="team-name-input" value="${existing ? esc(existing.name) : ""}" placeholder="e.g. U8 Thunder" autocapitalize="words" autofocus></div>
-    <div class="group"><span class="lbl">Players on the field</span>${radios("size", sizeOpts, sizeOf(f))}
-      <p class="hint">You pick the formation for each game when you make its lineup.</p></div>
-    <div class="group"><span class="lbl">Game</span>${radios("format", FORMATS, g)}</div>
+    <div class="group"><span class="lbl">Players on the field</span>${radios("size", sizeOpts, sizeOf(f))}</div>
+    <div class="group"><span class="lbl">Game</span>${radios("format", formats, g)}</div>
     ${IS_BETA && !existing ? `<label class="switch-row" for="beta-sample"><span>Beta: fill with sample players and an 8–10 game schedule<small class="choice-hint">For testing. Leave the name empty to call it "Sample" plus its size.</small></span><input type="checkbox" id="beta-sample"></label>` : ""}
     <div class="group"><span class="lbl">Positions</span>${Object.entries(STYLES).map(([k, v]) => `
       <label class="choice"><input type="radio" name="style" id="style-${k}" value="${k}" ${k === (existing ? teamStyle(existing) : defaultStyle(f)) ? "checked" : ""}>
@@ -1964,6 +2029,13 @@ document.getElementById("main").addEventListener("click", async (e) => {
   switch (b.dataset.action) {
     case "new-team":
       teamDialog(null);
+      break;
+    case "install":
+      addToHomeScreen();
+      break;
+    case "install-later":
+      hideInstallCard();
+      toast("You can add it any time from the team menu");
       break;
     case "sample-team": {
       const nt = newTeam("Sample team", "SIX_2_3", "QUARTERS");

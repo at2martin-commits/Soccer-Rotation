@@ -23,6 +23,13 @@ const check = (ok, label, detail = "") => {
   console.log(`${ok ? "  ok  " : "  FAIL"} ${label}${detail ? " — " + detail : ""}`);
   if (!ok) failures++;
 };
+for (const dir of [SITE, path.join(SITE, "beta")]) {
+  const m = JSON.parse(fs.readFileSync(path.join(dir, "manifest.webmanifest"), "utf8"));
+  const ok = m.display === "standalone" && m.start_url === "./" && m.icons.some((i) => i.sizes === "512x512") &&
+    m.icons.every((i) => fs.existsSync(path.join(dir, i.src))) && fs.existsSync(path.join(dir, "sw.js")) &&
+    fs.readFileSync(path.join(dir, "index.html"), "utf8").includes('<link rel="manifest" href="manifest.webmanifest">');
+  check(ok, "home screen files built: manifest, icons, offline helper", path.relative(SITE, dir) || "regular");
+}
 
 async function openApp(browser, { scheme = "light", url = MAIN, share = true } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: scheme, acceptDownloads: true });
@@ -130,7 +137,20 @@ async function plannerTests(browser) {
 async function flowTests(browser, scheme) {
   console.log(`Screens (${scheme})`);
   const { ctx, page: p, problems } = await openApp(browser, { scheme });
+  // Home screen shortcut: a card on the first screen, steps when the browser has no prompt.
+  check(!!(await p.$(".install-card")), "add-to-home-screen card on the first screen");
+  await p.click('[data-action="install"]');
+  check((await p.$$(".dlg .steps li")).length >= 2, "add to home screen shows the steps");
+  await p.click('[data-d="cancel"]');
   await p.click("text=Try it with sample names");
+  check(!!(await p.$(".install-card")), "card stays on the Players tab");
+  await p.click('[data-action="install-later"]');
+  await p.reload();
+  check(!(await p.$(".install-card")), "Not now hides the card for good");
+  await p.click("#team-btn");
+  check(!!(await p.$('.dlg [data-d="install"]')), "team menu still has Add to home screen");
+  await p.evaluate(() => closeDialog());
+  await p.click("#tab-players");
   await p.evaluate(() => { state.teams[0].name = "U8 Thunder"; commit(); });
   // Players: edit, preference, absence.
   await p.click('.pinfo:has-text("Ava")');
@@ -227,6 +247,8 @@ async function flowTests(browser, scheme) {
   // Teams, formations, About.
   await p.click("#team-btn"); await p.click('[data-d="new"]');
   const sizes = await p.$$eval('.dlg input[name="size"]', (r) => r.map((x) => x.value));
+  const fmts = await p.$$eval('.dlg input[name="format"]', (r) => r.map((x) => x.value));
+  check(fmts.join(",") === "QUARTERS,HALVES" && !(await p.textContent(".dlg")).includes("You pick the formation"), "game choices: 4 quarters or 2 halves", fmts.join(","));
   check(sizes.join(",") === "4v4,6v6,7v7,9v9,11v11" && !(await p.$$('.dlg input[name="formation"]')).length, "new team picks a size: 4v4 to 11v11", sizes.join(","));
   check((await p.textContent('label:has(#size-4v4)')).includes("no goalie") && !(await p.$$("#beta-sample")).length, "4v4 says no goalie; no sample option outside beta");
   await p.fill("#team-name-input", "U12 Blaze"); await p.check("#size-9v9");
@@ -300,7 +322,7 @@ async function safetyTests(browser) {
   }
   const st = await p.evaluate(() => state);
   const ids = [st.teams[0].id, ...st.teams[0].players.map((x) => x.id), ...st.teams[0].games.map((g) => g.id)];
-  check(!(await p.evaluate(() => window.__pwned)) && !(await p.$$("main img, [onerror]")).length, "hostile backup can't run code or inject markup");
+  check(!(await p.evaluate(() => window.__pwned)) && !(await p.$$("main img:not(.install-icon), [onerror]")).length, "hostile backup can't run code or inject markup");
   check(ids.every(Number.isFinite) && new Set(ids).size === ids.length, "restored ids cleaned and unique", JSON.stringify(ids));
   check(st.teams[0].games[0].home === "" && /^\d{4}-\d{2}-\d{2}$/.test(st.teams[0].games[0].date), "bad dates and home/away replaced");
   // Data from older versions upgrades.
