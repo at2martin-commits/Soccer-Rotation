@@ -226,12 +226,18 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; mar
 .goal-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); min-height: 44px; }
 .goal-list li:first-child { border-top: 0; }
 .goal-list .gp { color: var(--muted); font-size: 0.85rem; margin-right: 6px; }
-.spot.sel { border-color: var(--select); box-shadow: 0 0 0 3px color-mix(in srgb, var(--select) 45%, transparent); }
+.spot[data-action] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.spot.lifted { opacity: 0.35; }
+.spot.drop { border-color: var(--select); box-shadow: 0 0 0 3px color-mix(in srgb, var(--select) 45%, transparent); }
+.drag-ghost {
+  position: fixed; z-index: 50; pointer-events: none; margin: 0; transform: translate(-50%, -115%) scale(1.05);
+  border-color: var(--select); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
 .bench { background: var(--bench); padding: 10px; display: grid; gap: 8px; }
 .bench .label { font-family: var(--font-display); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .bench .prow { justify-content: flex-start; flex-wrap: wrap; }
 .bench .spot { background: var(--surface); color: var(--ink); border-color: var(--line); }
-.bench .spot.sel { border-color: var(--select); }
+.bench .spot.drop { border-color: var(--select); }
 .bench .spot .pos { color: var(--muted); }
 
 .timeline { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
@@ -977,7 +983,7 @@ function normalize(s) {
 
 const LOCAL_KEY = "soccer-rotation";
 let state = normalize(readLocal()) || { version: 3, nextId: 1, currentTeamId: null, teams: [], savedAt: 0 };
-let ui = { tab: state.teams.length ? "games" : "players", gameId: null, selected: null };
+let ui = { tab: state.teams.length ? "games" : "players", gameId: null };
 let cloudRef = null, cloudTimer = null, cloudBusy = false, cloudPending = false;
 
 function readLocal() {
@@ -1231,7 +1237,7 @@ function gameView(t, g) {
       : "Add your players on the Players tab first."}</p>`;
   }
   if (changed) html += `<div class="warn">Attendance changed since this lineup was made. Tap New lineup to include the right kids.</div>`;
-  html += `<p class="hint">Tap two players in the same box to swap them. Double-tap a player on the field to add a goal; tap <strong>+ ${esc(oppName(g))} goal</strong> when they score.${g.played ? " Changes update the season totals." : ""} ★ marks a preferred spot.</p>`;
+  html += `<p class="hint">Press and hold a player, then drag them onto another spot in the same box to swap. Double-tap a player on the field to add a goal; double-tap <strong>+ ${esc(oppName(g))} goal</strong> when they score.${g.played ? " Changes update the season totals." : ""} ★ marks a preferred spot.</p>`;
 
   const byId = Object.fromEntries(t.players.map((p) => [p.id, p]));
   const names = gameNames(t, g);
@@ -1248,7 +1254,6 @@ function gameView(t, g) {
 function periodsHTML(g, names, byId, interactive) {
   let html = "";
   g.plan.forEach((q, qi) => {
-    const sel = interactive && ui.selected && ui.selected.qi === qi ? ui.selected.slot : null;
     const spot = (slot, label) => {
       const id = playerAt(q, slot);
       const p = id != null ? byId[id] : null;
@@ -1257,9 +1262,9 @@ function periodsHTML(g, names, byId, interactive) {
       const goals = id != null ? goalCount(g, id, qi) : 0;
       const badge = goals ? `<span class="goal" aria-label="${goals} ${goals === 1 ? "goal" : "goals"}">⚽${goals > 1 ? goals : ""}</span>` : "";
       const inner = `${badge}<span class="pos">${label}${liked ? " ★" : ""}</span><span class="who">${name ? esc(name) : "—"}</span>`;
-      const cls = `spot${sel === slot ? " sel" : ""}${name ? "" : " empty-spot"}`;
+      const cls = `spot${name ? "" : " empty-spot"}`;
       return interactive
-        ? `<button type="button" class="${cls}" data-action="spot" data-qi="${qi}" data-slot="${slot}" aria-pressed="${sel === slot}">${inner}</button>`
+        ? `<button type="button" class="${cls}" data-action="spot" data-qi="${qi}" data-slot="${slot}">${inner}</button>`
         : `<div class="${cls}">${inner}</div>`;
     };
     // Rows come from the lineup itself, so past games still draw right after a formation change.
@@ -1489,7 +1494,7 @@ function teamMenu() {
       ${t ? `<button class="btn" type="button" data-d="edit">${ICON.edit} Edit this team</button>` : ""}
       <button class="btn primary" type="button" data-d="new">${ICON.plus} New team</button>
     </div>`, {
-    pick: (b) => { state.currentTeamId = Number(b.dataset.id); ui.selected = null; ui.gameId = null; ui.archiveId = null; closeDialog(); commit(); },
+    pick: (b) => { state.currentTeamId = Number(b.dataset.id); ui.gameId = null; ui.archiveId = null; closeDialog(); commit(); },
     edit: () => teamDialog(team()),
     new: () => teamDialog(null),
     backup: backupDialog,
@@ -1533,7 +1538,6 @@ function teamDialog(existing) {
         Object.assign(existing, { name, formation, format });
         if (!keep) {
           existing.games.forEach((x) => { if (!x.played) x.plan = null; });
-          ui.selected = null;
         }
       } else {
         const t = newTeam(name, formation, format);
@@ -1822,7 +1826,7 @@ function backupDialog() {
         return;
       }
       state = parsed;
-      ui = { tab: "games", gameId: null, selected: null };
+      ui = { tab: "games", gameId: null };
       closeDialog();
       commit();
       toast("Backup restored");
@@ -1861,7 +1865,6 @@ document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.addEventListen
   if (b.dataset.tab === "games" && ui.tab === "games") ui.gameId = null;
   if (b.dataset.tab === "season" && ui.tab === "season") { ui.archiveId = null; ui.archiveGameId = null; }
   ui.tab = b.dataset.tab;
-  ui.selected = null;
   render();
   window.scrollTo(0, 0);
 }));
@@ -1885,7 +1888,17 @@ document.getElementById("main").addEventListener("change", (e) => {
   commit();
 });
 
-let lastTap = null;
+// Goals take a double-tap so a stray tap can't add one. A lone tap gets a reminder instead.
+let lastTap = null, tapHintTimer = null;
+function doubleTap(key, hint) {
+  const now = Date.now();
+  clearTimeout(tapHintTimer);
+  if (lastTap && lastTap.key === key && now - lastTap.at < 450) { lastTap = null; return true; }
+  lastTap = { key, at: now };
+  tapHintTimer = setTimeout(() => { if (lastTap && lastTap.key === key) toast(hint); }, 500);
+  return false;
+}
+
 function addGoal(t, g, qi, slot) {
   const id = playerAt(g.plan[qi], slot);
   if (id == null) { render(); return; }
@@ -1901,7 +1914,6 @@ function addGoal(t, g, qi, slot) {
 
 function openGame(id) {
   ui.gameId = id;
-  ui.selected = null;
   render();
   window.scrollTo(0, 0);
 }
@@ -1943,7 +1955,6 @@ document.getElementById("main").addEventListener("click", async (e) => {
       break;
     case "back":
       ui.gameId = null;
-      ui.selected = null;
       render();
       break;
     case "edit-game":
@@ -1955,7 +1966,6 @@ document.getElementById("main").addEventListener("click", async (e) => {
         g.formation = formation;
         g.format = t.format;
         t.formation = formation; // offered first next game
-        ui.selected = null;
         commit();
       };
       const choices = sizeFormations(sizeOf(t.formation));
@@ -1979,7 +1989,6 @@ document.getElementById("main").addEventListener("click", async (e) => {
         (formation, rest) => {
           const prefs = (id) => (t.players.find((p) => p.id === id) || { preferred: [] }).preferred;
           g.plan = g.plan.map((q, i) => (i === qi || (rest && i > qi) ? changeFormation(q, formation, prefs) : q));
-          ui.selected = null;
           commit();
           toast(formationName(formation) + (rest && later ? " from " : " for ") + periodName(g.format, qi));
         });
@@ -2009,8 +2018,8 @@ document.getElementById("main").addEventListener("click", async (e) => {
       break;
     case "opp-goal": {
       const qi = Number(b.dataset.qi);
+      if (!doubleTap("opp:" + qi, "Double-tap to add a " + oppName(g) + " goal")) break;
       g.oppGoals.push({ p: qi });
-      ui.selected = null;
       commit();
       toast(oppName(g) + " goal · " + periodName(g.format, qi));
       break;
@@ -2070,29 +2079,98 @@ document.getElementById("main").addEventListener("click", async (e) => {
     }
     case "spot": {
       const qi = Number(b.dataset.qi), slot = b.dataset.slot;
-      const cur = ui.selected;
-      const now = Date.now();
-      // A second tap on the same spot right after selecting it is a double-tap: record a goal.
-      if (lastTap && lastTap.qi === qi && lastTap.slot === slot && now - lastTap.at < 450) {
-        lastTap = null;
-        ui.selected = null;
-        addGoal(t, g, qi, slot);
-        return;
-      }
-      lastTap = !cur || cur.qi !== qi ? { qi, slot, at: now } : null;
-      if (!cur || cur.qi !== qi) ui.selected = { qi, slot };
-      else if (cur.slot === slot) ui.selected = null;
-      else {
-        g.plan = swap(g.plan, qi, cur.slot, slot);
-        ui.selected = null;
-        commit();
-        return;
-      }
-      render();
+      const hint = slot.startsWith("F:") ? "Double-tap to add a goal · hold and drag to move" : "Hold and drag to move";
+      if (doubleTap(qi + "|" + slot, hint)) addGoal(t, g, qi, slot);
       break;
     }
   }
 });
+
+// ------------------------------------------------------------------ Drag to swap
+// Press and hold a player (or press and move, with a mouse), then drop them on another spot in
+// the same period. The hold lets a finger still scroll the page across the pitch.
+
+let drag = null, suppressClickUntil = 0;
+const HOLD_MS = 250;
+const mainEl = document.getElementById("main");
+function dropTarget(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const s = el && el.closest('.spot[data-action="spot"]');
+  return s && s.dataset.qi === drag.el.dataset.qi && s !== drag.el ? s : null;
+}
+function liftDrag() {
+  drag.lifted = true;
+  clearTimeout(tapHintTimer);
+  lastTap = null;
+  drag.ghost = drag.el.cloneNode(true);
+  drag.ghost.classList.add("drag-ghost");
+  drag.ghost.removeAttribute("data-action");
+  drag.ghost.style.width = drag.el.getBoundingClientRect().width + "px";
+  document.body.appendChild(drag.ghost);
+  drag.el.classList.add("lifted");
+  if (navigator.vibrate) navigator.vibrate(15);
+  moveDrag(drag.x, drag.y);
+  autoScroll();
+}
+/** Scrolls while a player is held near the top or bottom of the screen. */
+function autoScroll() {
+  if (!drag || !drag.lifted) return;
+  const edge = 70;
+  const dy = drag.y < edge ? -(edge - drag.y) / 4 : drag.y > innerHeight - edge ? (drag.y - innerHeight + edge) / 4 : 0;
+  if (dy) { window.scrollBy(0, dy); moveDrag(drag.x, drag.y); }
+  requestAnimationFrame(autoScroll);
+}
+function moveDrag(x, y) {
+  drag.x = x; drag.y = y;
+  drag.ghost.style.left = x + "px";
+  drag.ghost.style.top = y + "px";
+  const over = dropTarget(x, y);
+  if (over !== drag.over) {
+    if (drag.over) drag.over.classList.remove("drop");
+    if (over) over.classList.add("drop");
+    drag.over = over;
+  }
+}
+function endDrag(drop) {
+  const d = drag;
+  drag = null;
+  clearTimeout(d.timer);
+  if (!d.lifted) return;
+  d.ghost.remove();
+  d.el.classList.remove("lifted");
+  if (d.over) d.over.classList.remove("drop");
+  // Lifting the finger after a drag isn't also a tap.
+  suppressClickUntil = Date.now() + 400;
+  const t = team(), g = currentGame(t);
+  if (!drop || !d.over || !g || !g.plan) return;
+  g.plan = swap(g.plan, Number(d.el.dataset.qi), d.el.dataset.slot, d.over.dataset.slot);
+  commit();
+}
+mainEl.addEventListener("pointerdown", (e) => {
+  const el = e.target.closest('.spot[data-action="spot"]');
+  if (!el || drag || (e.pointerType === "mouse" && e.button !== 0)) return;
+  drag = { el, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, id: e.pointerId, mouse: e.pointerType === "mouse", lifted: false, over: null };
+  if (!drag.mouse) drag.timer = setTimeout(() => { if (drag && !drag.lifted) liftDrag(); }, HOLD_MS);
+});
+window.addEventListener("pointermove", (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  if (!drag.lifted) {
+    if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) <= 8) return;
+    // A finger that moves before the hold is up is scrolling; a mouse starts dragging.
+    if (!drag.mouse) { endDrag(false); return; }
+    drag.x = e.clientX; drag.y = e.clientY;
+    liftDrag();
+  }
+  moveDrag(e.clientX, e.clientY);
+});
+window.addEventListener("pointerup", (e) => { if (drag && e.pointerId === drag.id) endDrag(true); });
+window.addEventListener("pointercancel", (e) => { if (drag && e.pointerId === drag.id) endDrag(false); });
+// Once a player is lifted, the finger moves them instead of scrolling the page.
+window.addEventListener("touchmove", (e) => { if (drag && drag.lifted && e.cancelable) e.preventDefault(); }, { passive: false });
+mainEl.addEventListener("contextmenu", (e) => { if (e.target.closest(".spot[data-action]")) e.preventDefault(); });
+mainEl.addEventListener("click", (e) => {
+  if (Date.now() < suppressClickUntil) { e.stopImmediatePropagation(); e.preventDefault(); }
+}, true);
 
 render();
 initCloud();
