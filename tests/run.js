@@ -364,12 +364,35 @@ async function safetyTests(browser) {
   await m.ctx.close();
 }
 
+// ---------------------------------------------------------------- iPhone home screen help
+
+async function iphoneTests(browser) {
+  console.log("iPhone");
+  const ios = (app) => `Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) ${app} Mobile/15E148 Safari/604.1`;
+  for (const [label, ua, want] of [["Safari", ios("Version/18.0"), "bottom of Safari"], ["Chrome", ios("CriOS/130.0.0.0"), "top right"]]) {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: ua, isMobile: true, hasTouch: true });
+    const p = await ctx.newPage();
+    await p.goto(MAIN);
+    await p.click('[data-action="install"]');
+    const empty = await p.textContent(".dlg");
+    await p.click('[data-d="cancel"]');
+    await p.click("text=Try it with sample names");
+    await p.click('[data-action="install"]');
+    const full = await p.textContent(".dlg");
+    const noteFirst = await p.evaluate(() => !!(document.querySelector(".dlg .ios-note").compareDocumentPosition(document.querySelector(".dlg .steps")) & Node.DOCUMENT_POSITION_FOLLOWING));
+    check(empty.includes(want) && empty.includes("starts empty") && empty.includes("set up your team"), `iPhone ${label}: right steps, warns the app starts empty`);
+    check(full.includes("Copy backup") && full.includes("Replace my data") && noteFirst, `iPhone ${label} with teams: how to move them, before the steps`);
+    await ctx.close();
+  }
+}
+
 (async () => {
   const browser = await chromium.launch();
   try {
     await plannerTests(browser);
     await flowTests(browser, "light");
     await flowTests(browser, "dark");
+    await iphoneTests(browser);
     await safetyTests(browser);
   } catch (e) {
     failures++;

@@ -137,6 +137,7 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; mar
 .install-text span { color: var(--muted); font-size: 0.9rem; line-height: 1.3; }
 .install-btns { grid-column: 1 / -1; display: flex; gap: 8px; }
 .install-btns .btn.primary { flex: 1; }
+.warn.ios-note { font-weight: 400; line-height: 1.4; margin-bottom: 12px; }
 .steps { margin: 0 0 12px; padding-left: 1.4em; display: grid; gap: 8px; line-height: 1.4; }
 .warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius); padding: 12px 14px; font-weight: 600; }
 .empty { text-align: center; padding: 28px 16px; display: grid; gap: 12px; justify-items: center; }
@@ -1168,16 +1169,29 @@ async function addToHomeScreen() {
   }
   // No built-in prompt (iPhone, other browsers, or already added): show the steps instead.
   const ua = navigator.userAgent;
-  const steps = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
-    ? ["Tap the <strong>Share</strong> button (the square with an arrow) at the bottom or top of Safari.", "Scroll down and tap <strong>Add to Home Screen</strong>.", "Tap <strong>Add</strong>."]
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const steps = ios && /CriOS|EdgiOS/.test(ua)
+    ? ["Tap the <strong>Share</strong> button (the square with an arrow) at the top right, next to the address.", "Tap <strong>Add to Home Screen</strong> (scroll down if you don't see it).", "Tap <strong>Add</strong>."]
+    : ios && /FxiOS/.test(ua)
+    ? ["Tap the <strong>menu</strong> button (three lines) at the bottom right.", "Tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.", "Tap <strong>Add</strong>."]
+    : ios
+    ? ["Tap the <strong>Share</strong> button (the square with an arrow) at the bottom of Safari. If you don't see it, tap the address bar first, or the <strong>⋯</strong> button.", "Scroll down and tap <strong>Add to Home Screen</strong>.", "Tap <strong>Add</strong>."]
     : /SamsungBrowser/.test(ua)
     ? ["Tap the <strong>menu</strong> button (three lines) at the bottom of the screen.", "Tap <strong>Add page to</strong>, then <strong>Home screen</strong>.", "Tap <strong>Add</strong>."]
     : /Android/.test(ua)
     ? ["Tap the <strong>⋮</strong> menu at the top right of Chrome.", "Tap <strong>Add to Home screen</strong> (it may say <strong>Install app</strong>).", "Tap <strong>Install</strong> or <strong>Add</strong>."]
     : ["Look for the <strong>install</strong> icon at the right end of the address bar, or open the browser's menu.", "Choose <strong>Install Soccer Rotation</strong> (or <strong>Add to Home screen</strong>)."];
+  // On iPhone the home screen app keeps its own data, separate from the browser's.
+  const hasData = state.teams.some((t) => t.players.length || t.games.length);
+  const note = !ios
+    ? `<p class="hint">Then open Soccer Rotation from its icon. Your teams stay saved on this phone. If you already added it, look for the icon on your home screen.</p>`
+    : `<div class="warn ios-note"><strong>On iPhone, the home screen app starts empty.</strong> It keeps its own data, separate from this browser.${hasData
+      ? ` To bring your teams along: before you add it, open the team menu, tap <strong>Back up or move data</strong>, then <strong>Copy backup</strong>. Open the new app, tap <strong>Back up or move data</strong> there, paste into <strong>Restore from a backup</strong>, and tap <strong>Replace my data</strong>.`
+      : ` Add it first, then set up your team from the home screen icon.`}</div>`;
   openDialog(`<h2>Add to your home screen</h2>
+    ${ios ? note : ""}
     <ol class="steps">${steps.map((x) => `<li>${x}</li>`).join("")}</ol>
-    <p class="hint">Then open Soccer Rotation from its icon. Your teams stay saved on this phone. If you already added it, look for the icon on your home screen.</p>
+    ${ios ? "" : note}
     <div class="dlg-actions"><button class="btn primary" type="button" data-d="cancel">Got it</button></div>`);
 }
 
