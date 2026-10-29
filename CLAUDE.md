@@ -89,10 +89,16 @@ asks for changes in plain words.
 3. **Share text / game summary**: `lineupText` (pre-game text share), `reportData` → `reportHTML`
    (preview) and `reportCanvas` (the PNG). The summary always lists: Team (Home/Away), Opponent,
    Score, Date, Game, then the playing-time table and absences.
-4. **Saving**: `normalize()` cleans saved data and restored backups **field by field** (numbers,
+4. **Schedule import** (`importDialog` → `readCalendar`; `parseCalendar`, `calDate`, `calendarGames`,
+   `importPlan`): reads a `.ics` file the coach downloads (Blue Sombrero / Stack Sports team calendar
+   Export/Sync gives a `webcal://` link; the app turns it into an https download link, since it never
+   fetches anything itself). Titles "Home Vs Away" (Blue Sombrero) or "Away @ Home"; practices and
+   other non-games skipped; your team = the name in the most games (or the team's own name). Games
+   matching an existing one (same day, same or no opponent) are updated, not doubled.
+5. **Saving**: `normalize()` cleans saved data and restored backups **field by field** (numbers,
    real dates, known positions, plain text). `commit()` saves to localStorage and, on claude.ai,
    to the viewer's private `db` doc `data/users/<id>/state` (`initCloud`).
-5. **Rendering** (`render`, `playersView`, `gamesView`, `gameView`, `periodsHTML`, `goalsHTML`,
+6. **Rendering** (`render`, `playersView`, `gamesView`, `gameView`, `periodsHTML`, `goalsHTML`,
    `scoreboardHTML`, `playingTimeHTML`, `seasonView`, `archiveView`, `archivedGameView`) and
    **dialogs** (`teamDialog`, `gameDialog`, `playerDialog`, `shareResultsDialog`, `aboutDialog`,
    `backupDialog`, `archiveDialog`, `confirmDialog`). Clicks go through `data-action` (main) and
@@ -100,7 +106,7 @@ asks for changes in plain words.
 
 Saved shape: `{version: 3, nextId, currentTeamId, savedAt, teams: [{id, name, formation, format,
 style?, players: [{id, name, goalie, preferred: [POS]}], absent: [id], games: [{id, date, opponent,
-home: ""|"home"|"away", plan: [{positions: {POS: id}, bench: [id], formation?}], formation, format, played,
+home: ""|"home"|"away", time: ""|"HH:MM", place, plan: [{positions: {POS: id}, bench: [id], formation?}], formation, format, played,
 names: {id: name}, goals: [{id, p}], oppGoals: [{p}], absent?}], seasonCarry: {id: totals},
 archives: [{id, name, archivedAt, games, carry, names}]}]}`.
 

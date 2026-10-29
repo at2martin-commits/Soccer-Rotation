@@ -512,6 +512,90 @@ async function fairnessTests(browser) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------- Schedule import (Blue Sombrero calendar)
+
+async function importTests(browser) {
+  console.log("Schedule import");
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, timezoneId: "America/Los_Angeles" });
+  const p = await ctx.newPage();
+  const problems = [];
+  p.on("pageerror", (e) => problems.push("error: " + e.message));
+  p.on("dialog", (d) => { problems.push("dialog: " + d.message()); d.dismiss(); });
+  await p.goto(MAIN);
+  await p.click("text=Try it with sample names");
+  const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d; };
+  const ymd = (d) => d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+  const iso = (d) => ymd(d).replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
+  const ev = (lines) => ["BEGIN:VEVENT", ...lines, "END:VEVENT"].join("\r\n");
+  const me = "U10B Blue Thunder";
+  // Shaped like a Blue Sombrero / Stack Sports team calendar export.
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Blue Sombrero//Calendar//EN",
+    ev([`UID:1`, `DTSTART:${ymd(day(7))}T160000Z`, `SUMMARY:${me} Vs Red Rockets`, "DESCRIPTION:Central Park\\, Field 3\\nAnytown", "  Sports Complex"]),
+    ev([`UID:1b`, `DTSTART:${ymd(day(7))}T160000Z`, `SUMMARY:${me} Vs Red Rockets`]),
+    ev([`UID:2`, `DTSTART;TZID="America/Los_Angeles":${ymd(day(14))}T090000`, `SUMMARY:Green Hornets Vs ${me}`, "LOCATION:Lincoln School;Field B"]),
+    ev([`UID:3`, `DTSTART:${ymd(day(21))}T183000Z`, `SUMMARY:${me} @ Gold Comets`]),
+    ev([`UID:4`, `DTSTART:${ymd(day(21))}T010000Z`, `SUMMARY:${me} Practice at Main Field`]),
+    ev([`UID:5`, `DTSTART:${ymd(day(-7))}T160000Z`, `SUMMARY:${me} Vs Old Foes`]),
+    ev([`UID:6`, `DTSTART:${ymd(day(28))}T160000Z`, `SUMMARY:${me} Vs Rained Out`, "STATUS:CANCELLED"]),
+    ev([`UID:7`, `DTSTART:${ymd(day(35))}T160000Z`, `SUMMARY:<img src=x onerror="window.__pwned=1"> Vs ${me}`]),
+    ev([`UID:8`, `DTSTART:${ymd(day(35))}T170000Z`, `SUMMARY:Red Rockets Vs Green Hornets`]),
+    ev([`UID:9`, `DTSTART;VALUE=DATE:${ymd(day(42))}`, `SUMMARY:${me} Vs Silver Stars`]),
+    "END:VCALENDAR"].join("\r\n");
+  // A game already on the schedule (no time yet) gets updated, not doubled.
+  await p.evaluate((d) => { const t = team(); t.games.push({ id: state.nextId++, date: d, opponent: "red rockets", home: "", time: "", place: "", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] }); commit(); }, iso(day(7)));
+  await p.click("#tab-games");
+  await p.click('[data-action="import-schedule"]');
+  // Link box: webcal links become https downloads; anything else stays disabled.
+  await p.fill("#cal-link", "webcal://calendar.bluesombrero.com/abc/team.ics");
+  const href = await p.getAttribute("#cal-get", "href");
+  await p.fill("#cal-link", "javascript:alert(1)");
+  const bad = await p.getAttribute("#cal-get", "href");
+  check(href === "https://calendar.bluesombrero.com/abc/team.ics" && bad === null, "webcal link becomes a download link; other links refused", String(href));
+  await p.setInputFiles("#cal-file", { name: "Not a calendar.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
+  check((await p.textContent("#cal-msg")).includes("isn't a calendar"), "a wrong file gets a plain message");
+  await p.setInputFiles("#cal-file", { name: "team.ics", mimeType: "text/calendar", buffer: Buffer.from(ics) });
+  await p.waitForSelector("#cal-team");
+  const picked = await p.$eval("#cal-team", (x) => x.value);
+  const rows = await p.$$eval("#cal-list li", (r) => r.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
+  check(picked === me, "finds your team (the one in every game)", picked);
+  check(rows.length === 5 && rows.filter((r) => r.startsWith("Update")).length === 1 && !rows.some((r) => /Practice|Old Foes|Rained|Main Field/.test(r)),
+    "upcoming games only; practice, cancelled and duplicate skipped; existing game updated", rows.length + " rows");
+  await p.uncheck("#cal-upcoming");
+  check((await p.$$("#cal-list li")).length === 6, "past games can be included too");
+  await p.check("#cal-upcoming");
+  await p.click('[data-d="import"]');
+  const games = await p.evaluate(() => team().games.map((g) => ({ date: g.date, opp: g.opponent, home: g.home, time: g.time, place: g.place })).sort((a, b) => a.date.localeCompare(b.date)));
+  const utc16 = await p.evaluate((d) => { const x = new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8), 16, 0)); return String(x.getHours()).padStart(2, "0") + ":00"; }, ymd(day(7)));
+  const g1 = games.find((g) => g.opp === "Red Rockets"), g2 = games.find((g) => g.opp === "Green Hornets"), g3 = games.find((g) => g.opp === "Gold Comets"), g9 = games.find((g) => g.opp === "Silver Stars");
+  check(games.length === 5 && g1 && g1.home === "home" && g1.time === utc16 && g1.place === "Central Park, Field 3, Anytown Sports Complex",
+    "updated game: opponent, home, time in your time zone, field", JSON.stringify(g1));
+  check(g2 && g2.home === "away" && g2.time === "09:00" && g2.place === "Lincoln School;Field B" && g3 && g3.home === "away" && g9 && g9.time === "",
+    "Vs means home first; @ means away; local and all-day times", JSON.stringify([g2, g3 && g3.home, g9 && g9.time]));
+  const listText = (await p.textContent(".game-list")).replace(/\s+/g, " ");
+  check(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "games list with the import button fits the phone (no sideways scrolling)");
+  check(listText.includes("Central Park, Field 3") && /\d:\d\d/.test(listText), "games list shows time and field");
+  check(!(await p.evaluate(() => window.__pwned)) && !(await p.$$("main img:not(.install-icon)")).length && listText.includes("<img"), "team names from a calendar are shown as text, never run");
+  // Importing the same file again changes nothing.
+  await p.click('[data-action="import-schedule"]');
+  await p.click(".cal-paste summary");
+  await p.fill("#cal-text", ics);
+  await p.click('[data-d="read-text"]');
+  const again = await p.$$eval("#cal-list .cal-tag", (r) => r.map((x) => x.textContent));
+  await p.click('[data-d="import"]');
+  check(again.every((x) => x === "Update") && (await p.evaluate(() => team().games.length)) === 5, "pasting the calendar again only updates, never doubles");
+  // Edit dialog keeps time and field.
+  await p.click('.game-row:has-text("Red Rockets")');
+  await p.click('[data-action="edit-game"]');
+  check((await p.inputValue("#game-time")) === utc16 && (await p.inputValue("#game-place")) === "Central Park, Field 3, Anytown Sports Complex", "edit game shows time and field");
+  await p.fill("#game-time", "10:15"); await p.fill("#game-place", "Field 9"); await p.click('[data-d="save"]');
+  check((await p.textContent(".gh-title .hint")).includes("Field 9"), "time and field can be changed by hand");
+  // Saved values are checked like everything else.
+  const cleaned = await p.evaluate(() => normalize({ teams: [{ id: 1, name: "T", games: [{ id: 2, date: "2026-01-01", time: "25:99", place: "x".repeat(500) }, { id: 3, date: "2026-01-02", time: "<b>", place: { evil: 1 } }] }] }).teams[0].games.map((g) => [g.time, g.place.length]));
+  check(JSON.stringify(cleaned) === '[["",80],["",15]]', "bad times and long or odd fields are cleaned", JSON.stringify(cleaned));
+  check(!problems.length && !(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "no page errors, no sideways scrolling", problems.join(" | "));
+  await ctx.close();
+}
+
 // ---------------------------------------------------------------- iPhone home screen help
 
 async function iphoneTests(browser) {
@@ -537,12 +621,13 @@ async function iphoneTests(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
-    // `node tests/run.js fair` (or planner, screens, iphone, safety) runs just that part.
+    // `node tests/run.js fair` (or planner, screens, iphone, import, safety) runs just that part.
     const only = process.argv[2];
     const run = (name) => !only || only === name;
     if (run("planner")) await plannerTests(browser);
     if (run("screens")) { await flowTests(browser, "light"); await flowTests(browser, "dark"); }
     if (run("iphone")) await iphoneTests(browser);
+    if (run("import")) await importTests(browser);
     if (run("fair")) await fairnessTests(browser);
     if (run("safety")) await safetyTests(browser);
   } catch (e) {

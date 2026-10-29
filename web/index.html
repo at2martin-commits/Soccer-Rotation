@@ -128,6 +128,7 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; mar
 .btn-row { display: flex; gap: 8px; }
 .btn-row > .grow { flex: 1; }
 .full { width: 100%; }
+.btn.full { white-space: normal; text-align: center; }
 .install-card {
   display: grid; grid-template-columns: 48px 1fr; gap: 10px 12px; align-items: center; margin-bottom: 14px;
   background: var(--surface); border: 2px solid var(--accent); border-radius: var(--radius); padding: 12px 14px;
@@ -138,6 +139,16 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; mar
 .install-btns { grid-column: 1 / -1; display: flex; gap: 8px; }
 .install-btns .btn.primary { flex: 1; }
 .warn.ios-note { font-weight: 400; line-height: 1.4; margin-bottom: 12px; }
+.cal-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 45dvh; overflow-y: auto; }
+.cal-list li { display: flex; gap: 10px; align-items: flex-start; border-top: 1px solid var(--line); padding-top: 6px; }
+.cal-list li:first-child { border-top: 0; padding-top: 0; }
+.cal-list small { display: block; color: var(--muted); font-size: 0.85rem; }
+.cal-tag { flex: none; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+.cal-tag.upd { background: var(--bench); color: var(--ink); }
+.cal-paste summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.cal-paste { display: grid; gap: 8px; }
+a.btn[aria-disabled="true"] { opacity: 0.5; }
+select.field { appearance: auto; }
 .steps { margin: 0 0 12px; padding-left: 1.4em; display: grid; gap: 8px; line-height: 1.4; }
 .warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius); padding: 12px 14px; font-weight: 600; }
 .empty { text-align: center; padding: 28px 16px; display: grid; gap: 12px; justify-items: center; }
@@ -731,7 +742,7 @@ function changeFormation(q, formation, prefsOf) {
 function lineupText(t, g) {
   const players = planPlayers(t, g);
   const names = gameNames(t, g);
-  const lines = [t.name + " – " + longDate(g.date) + (g.opponent ? " vs " + g.opponent : "") + (g.home ? " (" + SIDES[g.home] + ")" : "")];
+  const lines = [t.name + " – " + whenWhere(g) + (g.opponent ? " vs " + g.opponent : "") + (g.home ? " (" + SIDES[g.home] + ")" : "")];
   g.plan.forEach((q, i) => {
     lines.push("", periodName(g.format, i) + " (" + formationName(periodFormation(g, q)) + ")");
     POS_ORDER.forEach((k) => { if (q.positions[k] != null) lines.push("  " + POS[k].short + ": " + names[q.positions[k]]); });
@@ -883,6 +894,10 @@ const todayStr = () => dateStr(new Date());
 const toDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const addDays = (s, n) => { const d = toDate(s); d.setDate(d.getDate() + n); return dateStr(d); };
 const longDate = (s) => toDate(s).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+/** "9:00 AM" (or the phone's own style) from "09:00". */
+const clockTime = (hm) => { const [h, m] = hm.split(":").map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
+/** "Saturday, November 7 · 9:00 AM · Central Park, Field 3", leaving out what's missing. Plain text: escape it for HTML. */
+const whenWhere = (g) => [longDate(g.date), g.time ? clockTime(g.time) : "", g.place || ""].filter(Boolean).join(" · ");
 
 // ------------------------------------------------------------------ State and saving
 
@@ -895,6 +910,7 @@ const cleanId = (v) => { const n = num(v); return n != null && Number.isSafeInte
 /** Keeps the first of any items that share an id. */
 const uniqueIds = (list) => { const ids = new Set(); return list.filter((x) => !ids.has(x.id) && ids.add(x.id)); };
 const text = (v, max = 80) => (v == null ? "" : String(v)).slice(0, max);
+const isTime = (v) => typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
 const isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(toDate(v));
 const idList = (a) => (Array.isArray(a) ? a.map(num).filter((x) => x != null) : []);
 const plainObject = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
@@ -927,6 +943,8 @@ function cleanGame(g, t, newId) {
     date: isDate(g.date) ? g.date : todayStr(),
     opponent: text(g.opponent),
     home: g.home === "home" || g.home === "away" ? g.home : "",
+    time: isTime(g.time) ? g.time : "",
+    place: text(g.place),
     plan: cleanPlan(g.plan),
     formation: known(FORMATIONS, g.formation) ? g.formation : t.formation,
     format: known(FORMATS, g.format) ? g.format : t.format,
@@ -979,7 +997,7 @@ function normalize(s) {
       const carry = cleanTotals(raw.season);
       const plan = cleanPlan(raw.plan);
       if (plan) {
-        const g = { id: newId(), date: todayStr(), opponent: "", plan, formation: t.formation, format: t.format, played: !!raw.planSaved, names: {}, goals: [], oppGoals: [], home: "" };
+        const g = { id: newId(), date: todayStr(), opponent: "", plan, formation: t.formation, format: t.format, played: !!raw.planSaved, names: {}, goals: [], oppGoals: [], home: "", time: "", place: "" };
         if (g.played) {
           summarize(g.plan, planPlayers(t, g)).forEach((x) => {
             const c = carry[x.id];
@@ -1283,7 +1301,7 @@ function gamesView(t) {
         <span class="dow">${esc(d.toLocaleDateString(undefined, { weekday: "short" }))}</span>
       </span>
       <span class="gmain"><strong>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</strong>
-        <small>${g.date === today ? "Today · " : ""}${g.home ? SIDES[g.home] + " · " : ""}${esc(longDate(g.date))}</small></span>
+        <small>${g.date === today ? "Today · " : ""}${g.home ? SIDES[g.home] + " · " : ""}${esc(whenWhere(g))}</small></span>
       <span class="status s-${cls}">${label}${g.played ? " " + g.goals.length + "–" + g.oppGoals.length : ""}</span>
     </button>`;
   };
@@ -1291,7 +1309,8 @@ function gamesView(t) {
     <div class="btn-row">
       <button class="btn primary grow" type="button" data-action="add-game">${ICON.plus} Add game</button>
       ${hasToday ? "" : `<button class="btn" type="button" data-action="quick-game">Game today</button>`}
-    </div>`;
+    </div>
+    <button class="btn full" type="button" data-action="import-schedule">Import schedule (Blue Sombrero)</button>`;
   if (!games.length) {
     return html + `<div class="panel empty">
       <h2>Add your schedule</h2>
@@ -1311,8 +1330,8 @@ function gameView(t, g) {
     <div class="game-head">
       <button class="back" type="button" data-action="back">${ICON.back} All games</button>
       <div class="gh-row">
-        <div class="gh-title"><h2>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</h2><p class="hint">${g.home ? SIDES[g.home] + " · " : ""}${esc(longDate(g.date))}</p></div>
-        <button class="icon-btn" type="button" data-action="edit-game" aria-label="Edit game date, opponent or home/away">${ICON.edit}</button>
+        <div class="gh-title"><h2>${g.opponent ? "vs " + esc(g.opponent) : "Game"}</h2><p class="hint">${g.home ? SIDES[g.home] + " · " : ""}${esc(whenWhere(g))}</p></div>
+        <button class="icon-btn" type="button" data-action="edit-game" aria-label="Edit game date, time, opponent, field or home/away">${ICON.edit}</button>
       </div>
     </div>
     ${plan ? scoreboardHTML(t, g) : ""}`;
@@ -1706,8 +1725,12 @@ function gameDialog(t, g) {
   openDialog(`<h2>${g ? "Edit game" : "Add game"}</h2>
     <div class="group"><label class="lbl" for="game-date">Date</label>
       <input class="field" type="date" id="game-date" value="${date}"></div>
+    <div class="group"><label class="lbl" for="game-time">Start time <span class="hint">(optional)</span></label>
+      <input class="field" type="time" id="game-time" value="${g ? esc(g.time) : ""}"></div>
     <div class="group"><label class="lbl" for="game-opp">Opponent <span class="hint">(optional)</span></label>
       <input class="field" id="game-opp" value="${g ? esc(g.opponent) : ""}" placeholder="e.g. Tigers" autocapitalize="words"></div>
+    <div class="group"><label class="lbl" for="game-place">Field <span class="hint">(optional)</span></label>
+      <input class="field" id="game-place" value="${g ? esc(g.place) : ""}" placeholder="e.g. Central Park, Field 3" autocapitalize="words" maxlength="80"></div>
     <div class="group"><span class="lbl">Home or away</span>
       <div class="seg" role="radiogroup" aria-label="Home or away">${Object.entries(SIDES).map(([k, v]) => `
         <label><input type="radio" name="side" id="side-${k}" value="${k}" ${g && g.home === k ? "checked" : ""}><span>${v}</span></label>`).join("")}</div></div>
@@ -1741,14 +1764,18 @@ function gameDialog(t, g) {
       return;
     }
     const opponent = dlg.querySelector("#game-opp").value.trim();
+    const time = isTime(dlg.querySelector("#game-time").value) ? dlg.querySelector("#game-time").value : "";
+    const place = text(dlg.querySelector("#game-place").value.trim());
     const picked = dlg.querySelector('input[name="side"]:checked');
     const home = picked ? picked.value : "";
     if (g) {
       g.date = d;
       g.opponent = opponent;
       g.home = home;
+      g.time = time;
+      g.place = place;
     } else {
-      t.games.push({ id: state.nextId++, date: d, opponent, plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [], home });
+      t.games.push({ id: state.nextId++, date: d, opponent, plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [], home, time, place });
     }
     commit();
     if (another) {
@@ -1762,6 +1789,181 @@ function gameDialog(t, g) {
       closeDialog();
     }
   }
+}
+
+// ------------------------------------------------------------------ Schedule import
+// Reads a calendar file (.ics): Blue Sombrero / Stack Sports team calendars, and most other
+// league calendars. The app never goes online, so the coach downloads the file and picks it.
+// Blue Sombrero titles games "Home Team Vs Visiting Team"; "Away @ Home" is also understood.
+// Practices, picture days and other non-games are skipped.
+
+const CAL_MAX_BYTES = 2000000, CAL_MAX_EVENTS = 1000;
+
+/** Each event's title, start (local date and "HH:MM") and place. Unknown lines are ignored. */
+function parseCalendar(raw) {
+  const lines = String(raw).slice(0, CAL_MAX_BYTES).replace(/\r\n?/g, "\n").replace(/\n[ \t]/g, "").split("\n");
+  const unescape = (v) => v.replace(/\\([\\;,nN])/g, (_, c) => (c === "n" || c === "N" ? "\n" : c));
+  const events = [];
+  let ev = null;
+  for (const line of lines) {
+    const tag = line.trim().toUpperCase();
+    if (tag === "BEGIN:VEVENT") { ev = {}; continue; }
+    if (tag === "END:VEVENT") {
+      if (ev) events.push(ev);
+      ev = null;
+      if (events.length >= CAL_MAX_EVENTS) break;
+      continue;
+    }
+    if (!ev) continue;
+    // NAME;PARAM=x;PARAM="quoted:value":VALUE
+    const m = line.match(/^([A-Za-z0-9-]+)((?:;(?:[^";:]|"[^"]*")*)*):(.*)$/);
+    if (!m) continue;
+    const name = m[1].toUpperCase();
+    if (["SUMMARY", "LOCATION", "DESCRIPTION", "STATUS"].includes(name)) ev[name] = unescape(m[3]).trim();
+    if (name === "DTSTART") ev.start = calDate(m[3].trim());
+  }
+  return events.filter((e) => e.start && e.SUMMARY && !/^CANCEL/i.test(e.STATUS || ""));
+}
+
+/** "20261107T160000Z" (UTC), "20261107T090000" (local) or "20261107" (all day). */
+function calDate(v) {
+  const m = v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/);
+  if (!m) return null;
+  const [, y, mo, d, h, mi, , utc] = m;
+  if (h == null) return isDate(`${y}-${mo}-${d}`) ? { date: `${y}-${mo}-${d}`, time: "" } : null;
+  const local = utc ? new Date(Date.UTC(+y, mo - 1, +d, +h, +mi)) : new Date(+y, mo - 1, +d, +h, +mi);
+  if (isNaN(local)) return null;
+  const date = dateStr(local), time = pad(local.getHours()) + ":" + pad(local.getMinutes());
+  return isDate(date) ? { date, time: isTime(time) ? time : "" } : null;
+}
+
+/** Games found in a calendar: both team names, which one is home, date, time and place. */
+function calendarGames(raw) {
+  return parseCalendar(raw).map((e) => {
+    const title = e.SUMMARY.replace(/\s+/g, " ");
+    if (/\b(practice|training|pictures?|photos?|meeting|clinic|tryouts?|party|ceremony)\b/i.test(title)) return null;
+    let m = title.match(/^(.+?)\s+(?:vs\.?|v\.?|versus)\s+(.+)$/i), home, away;
+    if (m) [home, away] = [m[1], m[2]];
+    else if ((m = title.match(/^(.+?)\s+@\s+(.+)$/))) [away, home] = [m[1], m[2]];
+    else return null;
+    const clean = (n) => text(n.replace(/^(game|match)\s*[:-]\s*/i, "").trim());
+    // Blue Sombrero puts the field in the description; other calendars use LOCATION.
+    const place = e.LOCATION || (e.DESCRIPTION || "").split("\n").map((x) => x.replace(/^(location|field|venue)\s*:\s*/i, "").trim()).filter(Boolean).slice(0, 2).join(", ");
+    return { home: clean(home), away: clean(away), date: e.start.date, time: e.start.time, place: text(place) };
+  }).filter((x) => x && x.home && x.away && x.home.toLowerCase() !== x.away.toLowerCase());
+}
+
+/** What importing would do for `mine`: new games, and existing games (same day and opponent) to update. */
+function importPlan(t, games, mine, upcomingOnly) {
+  const today = todayStr(), key = mine.toLowerCase(), seen = new Set();
+  return games.flatMap((x) => {
+    const ours = x.home.toLowerCase() === key ? "home" : x.away.toLowerCase() === key ? "away" : "";
+    if (!ours) return [];
+    const opponent = ours === "home" ? x.away : x.home;
+    const id = x.date + "|" + opponent.toLowerCase();
+    if (seen.has(id)) return [];
+    seen.add(id);
+    const existing = t.games.find((g) => g.date === x.date && (g.opponent.toLowerCase() === opponent.toLowerCase() || !g.opponent));
+    if (!existing && upcomingOnly && x.date < today) return [];
+    return [{ date: x.date, time: x.time, place: x.place, opponent, home: ours, existing }];
+  }).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+}
+
+function importDialog(t) {
+  openDialog(`<h2>Import schedule</h2>
+    <p class="hint">Bring in your games, with dates, times, opponents, fields and home or away, from Blue Sombrero (Stack Sports) or any calendar file.</p>
+    <ol class="steps">
+      <li>On your team's Blue Sombrero page, open the <strong>Calendar</strong> and tap <strong>Export</strong> (or <strong>Sync</strong>). Copy the link it shows. It starts with <strong>webcal://</strong>.</li>
+      <li>Paste the link here and tap <strong>Download calendar file</strong>.</li>
+      <li>Come back, tap <strong>Choose calendar file</strong> and pick the file you downloaded. It ends in <strong>.ics</strong>.</li>
+    </ol>
+    <input class="field" id="cal-link" type="url" inputmode="url" autocomplete="off" placeholder="Paste the webcal:// link" aria-label="Calendar link">
+    <a class="btn" id="cal-get" target="_blank" rel="noopener noreferrer" aria-disabled="true">Download calendar file</a>
+    <label class="btn primary" for="cal-file">Choose calendar file</label>
+    <input type="file" id="cal-file" accept=".ics,text/calendar" hidden>
+    <details class="cal-paste"><summary>The calendar opened as text instead?</summary>
+      <p class="hint">Select all of it, copy, and paste it here.</p>
+      <textarea class="field" id="cal-text" placeholder="BEGIN:VCALENDAR…"></textarea>
+      <button class="btn" type="button" data-d="read-text">Use pasted text</button></details>
+    <p class="warn" id="cal-msg" hidden></p>
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button></div>`, {
+    "read-text": () => readCalendar(t, dlg.querySelector("#cal-text").value),
+  });
+  const link = dlg.querySelector("#cal-link"), get = dlg.querySelector("#cal-get");
+  link.addEventListener("input", () => {
+    // Only calendar web links; webcal:// is the same address over https.
+    const v = link.value.trim().replace(/^webcals?:\/\//i, "https://");
+    let ok = false;
+    try { ok = /^https?:$/.test(new URL(v).protocol); } catch (e) {}
+    if (ok) { get.href = v; get.removeAttribute("aria-disabled"); }
+    else { get.removeAttribute("href"); get.setAttribute("aria-disabled", "true"); }
+  });
+  get.addEventListener("click", (e) => { if (!get.href) { e.preventDefault(); link.focus(); } });
+  dlg.querySelector("#cal-file").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.size > CAL_MAX_BYTES) return calendarMessage("That file is too big to be a team calendar.");
+    readCalendar(t, await file.text().catch(() => ""));
+  });
+}
+function calendarMessage(msg) {
+  const el = dlg.querySelector("#cal-msg");
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = msg;
+}
+
+function readCalendar(t, raw) {
+  const games = calendarGames(raw);
+  if (!games.length) {
+    return calendarMessage(/BEGIN:VCALENDAR/i.test(raw)
+      ? "No games found in that calendar. Games need titles like \"Thunder Vs Tigers\"."
+      : "That isn't a calendar file. Pick the file that ends in .ics.");
+  }
+  // Your team plays in every game: it's the most common name, unless this team's own name is there.
+  const counts = new Map();
+  games.forEach((x) => [x.home, x.away].forEach((n) => counts.set(n, (counts.get(n) || 0) + 1)));
+  const teams = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b));
+  const mine = teams.find((n) => n.toLowerCase() === t.name.toLowerCase()) || teams[0];
+  openDialog(`<h2>Import schedule</h2>
+    <div class="group"><label class="lbl" for="cal-team">Your team in this calendar</label>
+      <select class="field" id="cal-team">${teams.map((n) => `<option value="${esc(n)}" ${n === mine ? "selected" : ""}>${esc(n)} (${counts.get(n)} ${counts.get(n) === 1 ? "game" : "games"})</option>`).join("")}</select></div>
+    <label class="switch-row" for="cal-upcoming"><span>Only games from today on</span><input type="checkbox" id="cal-upcoming" checked></label>
+    <p class="hint" id="cal-summary"></p>
+    <ul class="cal-list" id="cal-list"></ul>
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+      <button class="btn primary" type="button" data-d="import">Import games</button></div>`, {
+    import: () => {
+      const plan = current();
+      if (!plan.length) return;
+      plan.forEach((x) => {
+        if (x.existing) Object.assign(x.existing, { opponent: x.opponent, home: x.home, time: x.time || x.existing.time, place: x.place || x.existing.place });
+        else t.games.push({ id: state.nextId++, date: x.date, opponent: x.opponent, home: x.home, time: x.time, place: x.place,
+          plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] });
+      });
+      const added = plan.filter((x) => !x.existing).length;
+      closeDialog();
+      ui.tab = "games";
+      ui.gameId = null;
+      commit();
+      const updated = plan.length - added;
+      toast([added ? `Added ${added} ${added === 1 ? "game" : "games"}` : "", updated ? `updated ${updated}` : ""].filter(Boolean).join(", ").replace(/^u/, "U"));
+    },
+  });
+  const current = () => importPlan(t, games, dlg.querySelector("#cal-team").value, dlg.querySelector("#cal-upcoming").checked);
+  const show = () => {
+    const plan = current();
+    const added = plan.filter((x) => !x.existing).length;
+    dlg.querySelector("#cal-summary").textContent = plan.length
+      ? `${added} new ${added === 1 ? "game" : "games"}` + (plan.length - added ? `, and ${plan.length - added} already in your schedule (their time and field will be updated).` : ".")
+      : "No games to import for this team.";
+    dlg.querySelector("#cal-list").innerHTML = plan.map((x) => `<li><span class="cal-tag${x.existing ? " upd" : ""}">${x.existing ? "Update" : "New"}</span>
+      <span><strong>vs ${esc(x.opponent)}</strong> · ${SIDES[x.home]}<small>${esc(whenWhere(x))}</small></span></li>`).join("");
+    dlg.querySelector('[data-d="import"]').disabled = !plan.length;
+  };
+  dlg.querySelector("#cal-team").addEventListener("change", show);
+  dlg.querySelector("#cal-upcoming").addEventListener("change", show);
+  show();
 }
 
 function playerDialog(t, p) {
@@ -1981,7 +2183,7 @@ function fillSampleTeam(t) {
   let side = Math.random() < 0.5 ? "home" : "away";
   for (let i = 0; i < games; i++) {
     t.games.push({ id: state.nextId++, date: addDays(dateStr(sat), i * 7), opponent: opponents[i], home: side,
-      plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] });
+      plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [], time: "", place: "" });
     side = side === "home" ? "away" : "home";
   }
 }
@@ -2078,8 +2280,11 @@ document.getElementById("main").addEventListener("click", async (e) => {
     case "add-game":
       gameDialog(t, null);
       break;
+    case "import-schedule":
+      importDialog(t);
+      break;
     case "quick-game": {
-      const ng = { id: state.nextId++, date: todayStr(), opponent: "", home: "", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] };
+      const ng = { id: state.nextId++, date: todayStr(), opponent: "", home: "", time: "", place: "", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] };
       t.games.push(ng);
       ui.gameId = ng.id;
       commit();
