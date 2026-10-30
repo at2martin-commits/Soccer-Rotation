@@ -382,6 +382,7 @@ a.btn.primary { color: var(--accent-ink); }
 .qr-box { justify-self: center; width: min(100%, 340px); background: #ffffff; border-radius: 10px; padding: 6px; }
 .qr-box svg { display: block; width: 100%; height: auto; }
 .sk-panel .btn-row > .btn { flex: 1; min-width: 0; padding: 0 10px; }
+.sync-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; overflow-wrap: anywhere; }
 .sk-periods { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
 .sk-periods button {
   min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
@@ -1113,6 +1114,16 @@ const isTime = (v) => typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(
 const isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(toDate(v));
 const idList = (a) => (Array.isArray(a) ? a.map(num).filter((x) => x != null) : []);
 const plainObject = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
+/** When a team, player or game last changed (ms), for merging with another coach's copy; 0 if unknown. */
+const stamp = (v) => { const n = num(v); return n != null && Number.isSafeInteger(n) && n > 0 && n < 1e14 ? n : 0; };
+// A game's parts merge on their own, so one coach can fix the field while the other keeps score.
+const GAME_PARTS = { info: ["date", "opponent", "home", "time", "place"], lineup: ["plan", "formation", "format"], score: ["played", "goals", "oppGoals", "names", "absent"] };
+function gameStamps(v) {
+  const c = Object.fromEntries(Object.keys(GAME_PARTS).map((k) => [k, stamp(plainObject(v)[k])]).filter(([, n]) => n));
+  return Object.keys(c).length ? { changed: c } : {};
+}
+const isSyncId = (v) => typeof v === "string" && /^[0-9a-z]{10}$/.test(v);
+const SYNC_GONE_MAX = 500; // deleted ids remembered per shared team
 function cleanPlan(plan) {
   if (!Array.isArray(plan) || !plan.length) return null;
   return plan.slice(0, 8).map((q) => {
@@ -1156,6 +1167,7 @@ function cleanGame(g, t, newId) {
       .filter((x) => x && Number.isInteger(num(x.p)) && num(x.p) >= 0)
       .map((x) => ({ p: num(x.p) })),
     ...(Array.isArray(g.absent) ? { absent: idList(g.absent) } : {}),
+    ...gameStamps(g.changed),
   };
 }
 
@@ -1184,10 +1196,15 @@ function normalize(s) {
         number: jersey(p.number),
         goalie: p.goalie !== false,
         preferred: [...new Set((Array.isArray(p.preferred) ? p.preferred : []).filter((k) => known(POS, k)))],
+        ...(stamp(p.changed) ? { changed: stamp(p.changed) } : {}),
       }))),
       absent: idList(raw.absent),
     };
     if (known(STYLES, raw.style)) t.style = raw.style;
+    // Shared with another coach: the shared team's id, when its settings changed, and what was deleted.
+    if (isSyncId(raw.sync)) t.sync = raw.sync;
+    if (stamp(raw.changed)) t.changed = stamp(raw.changed);
+    if (Array.isArray(raw.gone)) t.gone = [...new Set(raw.gone.map(cleanId).filter((x) => x != null))].slice(-SYNC_GONE_MAX);
     t.games = uniqueIds((Array.isArray(raw.games) ? raw.games : []).map((g) => cleanGame(g, t, newId)));
     if (raw.seasonCarry) {
       t.seasonCarry = cleanTotals(raw.seasonCarry);
@@ -1243,6 +1260,7 @@ function readLocal() {
 }
 function commit() {
   state.savedAt = Date.now();
+  stampChanges();
   try { localStorage.setItem(LOCAL_KEY, JSON.stringify(state)); } catch (e) { /* storage blocked: keep going in memory */ }
   if (cloudRef) {
     clearTimeout(cloudTimer);
@@ -1262,6 +1280,31 @@ async function pushCloud() {
     cloudBusy = false;
     if (cloudPending) { cloudPending = false; pushCloud(); }
   }
+}
+// What each team's settings, player and game looked like at the last save, so a save can stamp
+// what changed. A stamp set some other way (a merge from another coach) is kept.
+let stamps = new Map();
+const gameParts = (g) => Object.fromEntries(Object.entries(GAME_PARTS).map(([part, keys]) => [part, Object.fromEntries(keys.map((k) => [k, g[k]]))]));
+const partStamp = (g, part) => (g.changed && g.changed[part]) || 0;
+const teamSettings = (t) => ({ name: t.name, formation: t.formation, format: t.format, style: t.style, absent: t.absent, seasonCarry: t.seasonCarry });
+/** The same JSON for the same content, whatever order its fields were written in; stamps left out. */
+const unstamped = (x) => JSON.stringify(x, (k, v) => (k === "changed" ? undefined
+  : v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((key) => [key, v[key]])) : v));
+/** Stamps what changed since the last save; `remember` only notes how things are now. */
+function stampChanges(remember) {
+  const now = Date.now(), next = new Map();
+  const note = (key, what, get, set) => {
+    const json = unstamped(what), before = stamps.get(key);
+    if (!remember && (before ? before.json !== json && before.changed === get() : !get())) set(now);
+    next.set(key, { json, changed: get() });
+  };
+  state.teams.forEach((t) => {
+    note("t" + t.id, teamSettings(t), () => t.changed || 0, (v) => { t.changed = v; });
+    t.players.forEach((p) => note("p" + t.id + ":" + p.id, p, () => p.changed || 0, (v) => { p.changed = v; }));
+    t.games.forEach((g) => Object.entries(gameParts(g)).forEach(([part, what]) =>
+      note("g" + t.id + ":" + g.id + ":" + part, what, () => partStamp(g, part), (v) => { g.changed = { ...g.changed, [part]: v }; })));
+  });
+  stamps = next;
 }
 function setSync(text) {
   const el = document.getElementById("sync");
@@ -1283,6 +1326,7 @@ async function initCloud() {
     const remote = snap.exists ? normalize(JSON.parse(snap.data().json || "null")) : null;
     if (remote && remote.savedAt >= state.savedAt) {
       state = remote;
+      stampChanges(true);
       try { localStorage.setItem(LOCAL_KEY, JSON.stringify(state)); } catch (e) {}
       if (!state.teams.length) ui.tab = "players";
       render();
@@ -1448,6 +1492,7 @@ function render() {
         <p class="hint">Add your players and game dates, check off who showed up, and get a lineup where every kid gets fair time on the field.</p>
         <button class="btn primary" type="button" data-action="new-team">${ICON.plus} Create a team</button>
         <button class="btn" type="button" data-action="sample-team">Try it with sample names</button>
+        <button class="btn" type="button" data-action="coach-get">${ICON.scan} Get a team from another coach</button>
       </div>`;
     main.insertAdjacentHTML("afterbegin", installCard());
     return;
@@ -1520,15 +1565,22 @@ function gamesView(t) {
       ${hasToday ? "" : `<button class="btn" type="button" data-action="quick-game">Game today</button>`}
     </div>
     ${SHOW_IMPORT ? `<button class="btn full" type="button" data-action="import-schedule">Import schedule (Blue Sombrero)</button>` : ""}`;
+  const coaches = `
+    <section class="panel sk-panel"><h2>Other coaches</h2>
+      <p class="hint">Keep this team the same on every coach's phone: share after you set up the schedule, and after each game.</p>
+      <div class="btn-row">
+        <button class="btn grow" type="button" data-action="coach-share">${ICON.qr} Share</button>
+        <button class="btn grow" type="button" data-action="coach-get">${ICON.scan} Get update</button>
+      </div></section>`;
   if (!games.length) {
     return html + `<div class="panel empty">
       <h2>Add your schedule</h2>
       <p class="hint">Enter the dates from your team's schedule. On game day, open the game to make its lineup. Past games keep their lineups so you can look back.</p>
-    </div>`;
+    </div>` + coaches;
   }
   if (upcoming.length) html += `<h3 class="section-title">Coming up</h3><div class="game-list">${upcoming.map(row).join("")}</div>`;
   if (past.length) html += `<h3 class="section-title">Past games</h3><div class="game-list">${past.map(row).join("")}</div>`;
-  return html;
+  return html + coaches;
 }
 
 function gameView(t, g) {
@@ -1561,7 +1613,8 @@ function gameView(t, g) {
     html += `<div class="btn-row">
       <span class="played-note grow">${ICON.check} Played</span>
       <button class="btn primary" type="button" data-action="share-results">${ICON.share} Share results</button>
-    </div>`;
+    </div>
+    <button class="btn full" type="button" data-action="coach-share">${ICON.qr} Send update to other coaches</button>`;
   }
 
   if (!plan) {
@@ -1767,13 +1820,14 @@ function archiveDialog(t) {
       played.forEach((g) => Object.assign(names, g.names));
       t.players.forEach((p) => { names[p.id] = p.name; });
       t.archives.push({
-        id: state.nextId++,
+        id: newItemId(t),
         name,
         archivedAt: Date.now(),
         games: JSON.parse(JSON.stringify(played)),
         carry: JSON.parse(JSON.stringify(t.seasonCarry || {})),
         names,
       });
+      forget(t, t.games.map((g) => g.id));
       t.games = [];
       t.seasonCarry = {};
       ui.gameId = null;
@@ -1826,6 +1880,8 @@ function teamMenu() {
     <div class="team-list">${list}</div>
     <div class="dlg-actions">
       ${canInstall() ? `<button class="btn" type="button" data-d="install">Add to home screen</button>` : ""}
+      ${t ? `<button class="btn" type="button" data-d="coach">${ICON.share} Share with another coach</button>` : ""}
+      <button class="btn" type="button" data-d="get">${ICON.scan} Get a team from a coach</button>
       <button class="btn" type="button" data-d="backup">Back up or move data</button>
       ${t ? `<button class="btn" type="button" data-d="edit">${ICON.edit} Edit this team</button>` : ""}
       <button class="btn primary" type="button" data-d="new">${ICON.plus} New team</button>
@@ -1834,6 +1890,8 @@ function teamMenu() {
     edit: () => teamDialog(team()),
     new: () => teamDialog(null),
     backup: backupDialog,
+    coach: () => coachShareDialog(team()),
+    get: () => scanDialog("team"),
     install: () => { closeDialog(); addToHomeScreen(); },
   });
 }
@@ -1963,6 +2021,7 @@ function gameDialog(t, g) {
     delete: (b) => {
       if (b.dataset.armed) {
         t.games = t.games.filter((x) => x.id !== g.id);
+        forget(t, [g.id]);
         ui.gameId = null;
         closeDialog();
         commit();
@@ -1992,7 +2051,7 @@ function gameDialog(t, g) {
       g.time = time;
       g.place = place;
     } else {
-      t.games.push({ id: state.nextId++, date: d, opponent, plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [], home, time, place });
+      t.games.push({ id: newItemId(t), date: d, opponent, plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [], home, time, place });
     }
     commit();
     if (another) {
@@ -2177,7 +2236,7 @@ function readCalendar(t, raw) {
       if (!plan.length) return;
       plan.forEach((x) => {
         if (x.existing) Object.assign(x.existing, { opponent: x.opponent, home: x.home, time: x.time || x.existing.time, place: x.place || x.existing.place });
-        else t.games.push({ id: state.nextId++, date: x.date, opponent: x.opponent, home: x.home, time: x.time, place: x.place,
+        else t.games.push({ id: newItemId(t), date: x.date, opponent: x.opponent, home: x.home, time: x.time, place: x.place,
           plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] });
       });
       const added = plan.filter((x) => !x.existing).length;
@@ -2248,6 +2307,7 @@ function playerDialog(t, p) {
         // Keep their name on past games they played in.
         t.games.forEach((g) => { if (g.played) g.names[p.id] = g.names[p.id] || p.name; });
         t.players = t.players.filter((x) => x.id !== p.id);
+        forget(t, [p.id]);
         t.absent = t.absent.filter((id) => id !== p.id);
         delete t.seasonCarry[p.id];
         closeDialog();
@@ -2377,6 +2437,7 @@ function backupDialog() {
         return;
       }
       state = parsed;
+      stampChanges(true);
       ui = { tab: "games", gameId: null };
       closeDialog();
       commit();
@@ -2514,6 +2575,9 @@ function readHash() {
     const r = readScoreResult(h);
     if (r) applyScoreDialog(r);
     else toast("That score link is incomplete. Ask the parent to show the code again.");
+  } else if (h.startsWith("#team=")) {
+    clear();
+    useTeamCode(h);
   }
 }
 
@@ -2547,22 +2611,24 @@ function stopScan() {
   if (scanStream) scanStream.getTracks().forEach((x) => x.stop());
   scanStream = null;
 }
-function scanDialog() {
+/** Scans a parent's score code, or (`kind` "team") another coach's team code. Either kind is used when seen. */
+function scanDialog(kind) {
   // Chrome on Android reads QR codes itself; elsewhere the phone's camera app opens the link.
   const camera = "BarcodeDetector" in window && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  openDialog(`<h2>Scan the parent's score</h2>
+  const [who, what, eg] = kind === "team" ? ["the other coach's", "team", "#team="] : ["the parent's", "score", "#skr="];
+  openDialog(`<h2>${kind === "team" ? "Get an update from a coach" : "Scan the parent's score"}</h2>
     ${camera ? `<video class="scan-video" id="scan-video" playsinline muted></video>` : ""}
-    <p class="hint" id="scan-msg">${camera ? "Point your camera at the code on the parent's phone."
-      : "Open your phone's camera app and point it at the code on the parent's phone, then open the link. It comes back here with the score."}</p>
-    <div class="group"><label class="lbl" for="scan-paste">Or paste the link the parent sent</label>
-      <div class="add-row"><input class="field" id="scan-paste" autocomplete="off" placeholder="https://…#skr=…">
+    <p class="hint" id="scan-msg">${camera ? `Point your camera at the code on ${who} phone.`
+      : `Open your phone's camera app and point it at the code on ${who} phone, then open the link. It comes back here with the ${what}.`}</p>
+    <div class="group"><label class="lbl" for="scan-paste">Or paste the link they sent</label>
+      <div class="add-row"><input class="field" id="scan-paste" autocomplete="off" placeholder="https://…${eg}…">
       <button class="btn" type="button" data-d="paste">Use</button></div></div>
     <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button></div>`, {
-    paste: () => { if (!useScoreCode(dlg.querySelector("#scan-paste").value)) dlg.querySelector("#scan-paste").focus(); },
+    paste: () => { if (!useCode(dlg.querySelector("#scan-paste").value, false, kind)) dlg.querySelector("#scan-paste").focus(); },
   });
-  if (camera) startScan();
+  if (camera) startScan(kind);
 }
-async function startScan() {
+async function startScan(kind) {
   const run = ++scanRun;
   const msg = (text) => { const el = dlg.querySelector("#scan-msg"); if (el) el.textContent = text; };
   try {
@@ -2578,7 +2644,7 @@ async function startScan() {
       if (run !== scanRun) return;
       const found = await detector.detect(video).catch(() => []);
       if (run !== scanRun) return;
-      if (found.some((c) => useScoreCode(c.rawValue, true))) return;
+      if (found.some((c) => useCode(c.rawValue, true, kind))) return;
       scanTimer = setTimeout(tick, 200);
     };
     tick();
@@ -2590,17 +2656,20 @@ async function startScan() {
     msg("The camera didn't start. Allow camera access and try again, or use your phone's camera app: point it at the code and open the link.");
   }
 }
-/** Uses a scanned or pasted score code; says what's wrong otherwise. `quiet` keeps scanning on other codes. */
-function useScoreCode(raw, quiet) {
+/** Uses a scanned or pasted score or team code; says what's wrong otherwise. `quiet` keeps scanning on other codes. */
+function useCode(raw, quiet, kind) {
   const r = readScoreResult(raw);
   const el = dlg.querySelector("#scan-msg");
   if (r) { stopScan(); applyScoreDialog(r); return true; }
-  if (el) el.textContent = /#sk=/.test(raw) ? "That's the lineup code. Scan the code the parent shows after the game."
-    : quiet ? el.textContent : "That isn't a score link. Ask the parent for the code from Game over.";
+  if (/#team=[zj]/.test(raw)) { stopScan(); useTeamCode(raw); return true; }
+  if (el) el.textContent = /#sk=/.test(raw) ? (kind === "team" ? "That's a parent scorekeeper code. Scan the code from Share with another coach." : "That's the lineup code. Scan the code the parent shows after the game.")
+    : quiet ? el.textContent : kind === "team" ? "That isn't a team link. Ask the coach to tap Share with another coach." : "That isn't a score link. Ask the parent for the code from Game over.";
   return false;
 }
 function applyScoreDialog(r) {
-  const t = state.teams.find((x) => x.id === r.teamId);
+  // A team shared by another coach can have a different id on this phone; its games keep theirs.
+  const has = (x) => x.games.some((y) => y.id === r.gameId);
+  const t = state.teams.find((x) => x.id === r.teamId && has(x)) || state.teams.find((x) => x.sync && has(x));
   const g = t && t.games.find((x) => x.id === r.gameId);
   if (!g || !g.plan) {
     openDialog(`<h2>Game not found</h2>
@@ -2738,6 +2807,291 @@ function scorekeeperClick(b) {
   }
 }
 
+// ------------------------------------------------------------------ Coach sync
+// Two (or more) coaches keep the same team on their phones. "Share with a coach" packs the team
+// (players, schedule, lineups, goals, season totals, past seasons) into a link, compressed after
+// the "#", so it goes only where the coach sends it. Opening or scanning it on the other phone
+// adds the team, or merges it: each player, each game and the team's settings keep whichever copy
+// was changed last, and deletions carry over. Codes are checked like a backup.
+//
+// Link: #team=z<deflated JSON, base64url>, or #team=j<JSON, base64url> where a phone can't compress.
+
+const SYNC_QR_MAX = 1500; // longer links make QR codes too dense to scan from a phone screen
+const SYNC_MAX_CHARS = 400000, SYNC_MAX_BYTES = 2000000;
+
+/** A new player, game or season id. Shared teams get random ids, so two coaches adding at once don't clash. */
+function newItemId(t) {
+  if (!t || !t.sync) return state.nextId++;
+  const used = new Set(allIds());
+  let id;
+  do id = 1e6 + Math.floor(Math.random() * (1e9 - 1e6)); while (used.has(id));
+  state.nextId = Math.max(state.nextId, id + 1);
+  return id;
+}
+function allIds() {
+  const ids = [];
+  state.teams.forEach((t) => {
+    ids.push(t.id);
+    [t.players, t.games, t.archives].forEach((list) => list.forEach((x) => ids.push(x.id)));
+    t.archives.forEach((a) => a.games.forEach((g) => ids.push(g.id)));
+  });
+  return ids;
+}
+/** Remembers deleted ids on a shared team, so the other coach's copy deletes them too. */
+function forget(t, ids) {
+  if (t.sync) t.gone = [...(t.gone || []), ...ids].slice(-SYNC_GONE_MAX);
+}
+function randomSyncId() {
+  const a = new Uint8Array(10);
+  crypto.getRandomValues(a);
+  return [...a].map((x) => (x % 36).toString(36)).join("");
+}
+
+const b64url = (bytes) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const fromB64url = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+async function readStream(stream, max) {
+  const reader = stream.getReader(), parts = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > max) { reader.cancel(); throw new Error("too big"); }
+    parts.push(value);
+  }
+  const out = new Uint8Array(size);
+  parts.reduce((at, x) => { out.set(x, at); return at + x.length; }, 0);
+  return out;
+}
+async function packSync(obj) {
+  const json = new TextEncoder().encode(JSON.stringify(obj));
+  if (typeof CompressionStream === "function") {
+    try { return "z" + b64url(await readStream(new Blob([json]).stream().pipeThrough(new CompressionStream("deflate-raw")), SYNC_MAX_BYTES)); } catch (e) {}
+  }
+  return "j" + b64url(json);
+}
+/** The team in a link, cleaned like a backup, or null. */
+async function unpackSync(raw) {
+  const m = String(raw).match(/#team=([zj])([A-Za-z0-9_-]+)/);
+  if (!m || m[2].length > SYNC_MAX_CHARS) return null;
+  try {
+    let bytes = fromB64url(m[2]);
+    if (m[1] === "z") bytes = await readStream(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw")), SYNC_MAX_BYTES);
+    return cleanShared(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch (e) {
+    return null;
+  }
+}
+
+/** What goes in a link, kept short. Kids are written as their place in `ids` (2 characters):
+ *  lineups as spot + kid pairs and a bench (like the scorekeeper's), goals as kid + period, the other
+ *  team's goals as periods. Fields that cleaning fills back in the same way are left out, and so are
+ *  names saved on played games that match the roster. */
+function sharedTeam(t) {
+  const roster = Object.fromEntries(t.players.map((p) => [p.id, p.name]));
+  const ids = [...new Set([...t.players.map((p) => p.id), ...t.games.flatMap((g) =>
+    [...(g.plan || []).flatMap((q) => [...Object.values(q.positions), ...q.bench]), ...g.goals.map((x) => x.id), ...(g.absent || [])])])];
+  const at = new Map(ids.map((id, i) => [id, b36(i).padStart(2, "0")]));
+  const lineup = (plan) => plan && plan.map((q) => POS_ORDER.filter((k) => q.positions[k] != null).map((k) => b36(POS_ORDER.indexOf(k)) + at.get(q.positions[k])).join("") +
+    "|" + q.bench.map((id) => at.get(id)).join("") + (q.formation ? "|" + q.formation : ""));
+  const empty = (v) => v === "" || v === null || v === false || (Array.isArray(v) ? !v.length : typeof v === "object" && !Object.keys(v).length);
+  const lean = (o, keep) => Object.fromEntries(Object.entries(o).filter(([k, v]) => keep.includes(k) || !empty(v)));
+  return { v: 1, sync: t.sync, id: t.id, name: t.name, formation: t.formation, format: t.format, style: t.style, changed: t.changed,
+    absent: t.absent, carry: t.seasonCarry, gone: t.gone || [], archives: t.archives, ids,
+    players: t.players.map(({ goalie, ...p }) => ({ ...lean(p, []), ...(goalie ? {} : { goalie }) })),
+    games: t.games.map((g) => lean({ ...g, plan: null, lineup: lineup(g.plan), goals: g.goals.map((x) => at.get(x.id) + x.p).join(""),
+      oppGoals: g.oppGoals.map((x) => x.p).join(""), absent: g.absent && g.absent.map((id) => at.get(id)).join(""), names: Object.fromEntries(Object.entries(g.names).filter(([id, n]) => roster[id] !== n)),
+      formation: g.formation === t.formation ? null : g.formation, format: g.format === t.format ? null : g.format }, g.absent ? ["absent"] : [])) };
+}
+function cleanShared(o) {
+  o = plainObject(o);
+  if (o.v !== 1 || !isSyncId(o.sync)) return null;
+  const ids = Array.isArray(o.ids) ? o.ids : [];
+  const kids = (s) => (typeof s === "string" ? s.match(/[0-9a-z]{2}/g) || [] : []).map((i) => ids[parseInt(i, 36)]);
+  const period = (s) => {
+    const [field = "", bench = "", formation] = String(s).split("|"), positions = {};
+    for (const [, k, i] of field.matchAll(/([0-9a-z])([0-9a-z]{2})/g)) if (POS_ORDER[parseInt(k, 36)]) positions[POS_ORDER[parseInt(k, 36)]] = ids[parseInt(i, 36)];
+    return { positions, bench: kids(bench), formation };
+  };
+  const games = (Array.isArray(o.games) ? o.games : []).filter((g) => g && typeof g === "object").map((g) => ({ ...g,
+    plan: Array.isArray(g.lineup) ? g.lineup.slice(0, 8).map(period) : null,
+    goals: (typeof g.goals === "string" ? g.goals.match(/[0-9a-z]{2}\d/g) || [] : []).map((x) => ({ id: ids[parseInt(x.slice(0, 2), 36)], p: Number(x[2]) })),
+    oppGoals: (typeof g.oppGoals === "string" ? g.oppGoals.match(/\d/g) || [] : []).map((p) => ({ p: Number(p) })),
+    absent: typeof g.absent === "string" ? kids(g.absent) : undefined }));
+  const s = normalize({ teams: [{ ...o, games, seasonCarry: plainObject(o.carry) }] });
+  const t = s && s.teams[0];
+  if (!t) return null;
+  t.sync = o.sync;
+  t.gone = t.gone || [];
+  t.part = o.part === 1;
+  const roster = Object.fromEntries(t.players.map((p) => [p.id, p.name]));
+  t.games.forEach((g) => {
+    if (!g.played) return;
+    const ids = [...(g.plan || []).flatMap((q) => [...Object.values(q.positions), ...q.bench]), ...(g.absent || [])];
+    ids.forEach((id) => { if (g.names[id] == null && roster[id] != null) g.names[id] = roster[id]; });
+  });
+  return t;
+}
+
+const lastChange = (g) => Math.max(0, ...Object.values(g.changed || {}));
+/** The link for a team, and a QR code; when everything doesn't fit in a code, it holds the games changed last. */
+async function syncLinks(t) {
+  const full = sharedTeam(t);
+  const link = appUrl() + "#team=" + (await packSync(full));
+  if (link.length <= SYNC_QR_MAX) return { link, qr: link, games: full.games.length, total: full.games.length };
+  // Past seasons and deletions inside them wait for the link; then the oldest changes drop out.
+  const archived = new Set(t.archives.flatMap((a) => a.games.map((g) => g.id)));
+  const part = { ...full, part: 1, archives: [], gone: full.gone.filter((id) => !archived.has(id)),
+    games: full.games.slice().sort((a, b) => lastChange(b) - lastChange(a)) };
+  let qr = null;
+  for (let lo = 0, hi = part.games.length; lo <= hi;) {
+    const mid = (lo + hi) >> 1;
+    const l = appUrl() + "#team=" + (await packSync({ ...part, games: part.games.slice(0, mid) }));
+    if (l.length <= SYNC_QR_MAX) { qr = { link: l, n: mid }; lo = mid + 1; } else hi = mid - 1;
+  }
+  return { link, qr: qr && qr.link, games: qr ? qr.n : 0, total: full.games.length };
+}
+
+/** Merges a shared copy into ours (without changing ours): for each player, game and the team's settings, the copy changed last wins. */
+function mergeTeam(mine, inc) {
+  const gone = new Set([...(mine.gone || []), ...inc.gone]);
+  const log = { players: { added: [], updated: [], removed: [] }, games: { added: [], updated: [], removed: [] }, archives: [], settings: false, kept: 0 };
+  // Each part (a player, or a game's details, lineup and score) keeps the copy changed last.
+  const player = (x, y) => (unstamped(x) === unstamped(y) ? [x, 0, 0] : (y.changed || 0) > (x.changed || 0) ? [y, 1, 0] : [x, 0, 1]);
+  const game = (x, y) => {
+    const ours = gameParts(x), theirs = gameParts(y), g = { ...x, changed: { ...x.changed } };
+    let took = 0, kept = 0;
+    Object.keys(GAME_PARTS).forEach((part) => {
+      if (unstamped(ours[part]) === unstamped(theirs[part])) return;
+      if (partStamp(y, part) <= partStamp(x, part)) { kept = 1; return; }
+      took = 1;
+      GAME_PARTS[part].forEach((k) => { if (k in y) g[k] = y[k]; else delete g[k]; });
+      g.changed[part] = partStamp(y, part);
+    });
+    return [took ? g : x, took, kept];
+  };
+  const list = (key, one) => {
+    const theirs = new Map(inc[key].map((x) => [x.id, x])), out = [];
+    mine[key].forEach((x) => {
+      const y = theirs.get(x.id);
+      if (gone.has(x.id)) { log[key].removed.push(x); return; }
+      const [z, took, kept] = y ? one(x, y) : [x, 0, 0];
+      out.push(z);
+      if (took) log[key].updated.push(z);
+      log.kept += kept;
+    });
+    const have = new Set(mine[key].map((x) => x.id));
+    inc[key].forEach((y) => { if (!have.has(y.id) && !gone.has(y.id)) { out.push(y); log[key].added.push(y); } });
+    return out;
+  };
+  const merged = { ...mine, players: list("players", player), games: list("games", game), gone: [...gone].slice(-SYNC_GONE_MAX) };
+  const haveArchive = new Set(mine.archives.map((a) => a.id));
+  log.archives = inc.archives.filter((a) => !haveArchive.has(a.id) && !gone.has(a.id));
+  merged.archives = [...mine.archives.filter((a) => !gone.has(a.id)), ...log.archives];
+  if (unstamped(teamSettings(mine)) !== unstamped(teamSettings(inc))) {
+    if ((inc.changed || 0) > (mine.changed || 0)) {
+      log.settings = true;
+      Object.assign(merged, { name: inc.name, formation: inc.formation, format: inc.format, absent: inc.absent, seasonCarry: inc.seasonCarry, changed: inc.changed });
+      if (inc.style) merged.style = inc.style; else delete merged.style;
+    } else log.kept++;
+  }
+  log.changes = log.archives.length + (log.settings ? 1 : 0) + ["players", "games"].reduce((n, k) => n + log[k].added.length + log[k].updated.length + log[k].removed.length, 0);
+  return { team: merged, log };
+}
+
+// Coach side: show the code and the link.
+async function coachShareDialog(t) {
+  if (!t.sync) { t.sync = randomSyncId(); commit(); }
+  const { link, qr, games, total } = await syncLinks(t);
+  const svg = qr ? qrSVG(qr, "Team code for " + t.name) : "";
+  const more = total - games;
+  openDialog(`<h2>Share with another coach</h2>
+    <p class="hint">Your assistant coach scans this code, or opens the link you send. They get ${esc(t.name)} on their phone: players, schedule, lineups, goals and season totals. After a game, whoever has the newest changes shares again and the other phone adds just what changed.</p>
+    ${svg ? `<div class="qr-box">${svg}</div>` : ""}
+    ${more ? `<p class="hint">${svg ? `Too much for one code, so it holds the ${games} most recently changed ${games === 1 ? "game" : "games"}${t.archives.length ? " and no past seasons" : ""}.` : "Too much for a code."} <strong>Send link</strong> shares everything.</p>`
+      : !svg ? `<p class="hint">Past seasons make this too much for a code. <strong>Send link</strong> shares everything.</p>` : ""}
+    <div class="btn-row">
+      <button class="btn grow" type="button" data-d="send">${ICON.share} Send link</button>
+      <button class="btn grow" type="button" data-d="get">${ICON.scan} Get their update</button>
+    </div>
+    <p class="hint">Send it by text or email. Nothing is uploaded: the team is inside the link itself.</p>
+    <div class="dlg-actions"><button class="btn primary" type="button" data-d="cancel">Done</button></div>`, {
+    send: () => shareLink(t.name + ": team update from Soccer Rotation", link),
+    get: () => scanDialog("team"),
+  });
+}
+
+/** Opening, scanning or pasting a team link. */
+async function useTeamCode(raw) {
+  const inc = await unpackSync(raw);
+  if (!inc) {
+    openDialog(`<h2>That team link is damaged</h2>
+      <p class="hint">Part of it is missing, which can happen when a long link is copied or a text message cuts it. Ask the coach to send it again, or scan their code.</p>
+      <div class="dlg-actions"><button class="btn primary" type="button" data-d="cancel">OK</button></div>`);
+    return;
+  }
+  const mine = state.teams.find((x) => x.sync === inc.sync);
+  const part = inc.part ? `<p class="hint">This code has only the games changed last. Ask the coach to <strong>Send link</strong> for everything.</p>` : "";
+  const gameLabel = (g) => (g.opponent ? "vs " + g.opponent : "Game") + " · " + toDate(g.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+    (g.played ? " · " + g.goals.length + "–" + g.oppGoals.length : "");
+  if (!mine) {
+    const played = inc.games.filter((g) => g.played).length;
+    openDialog(`<h2>Add ${esc(inc.name)}?</h2>
+      <p class="hint">Another coach shared this team: ${inc.players.length} ${inc.players.length === 1 ? "player" : "players"}, ${inc.games.length} ${inc.games.length === 1 ? "game" : "games"}${played ? ` (${played} played)` : ""}${inc.archives.length ? `, ${inc.archives.length} past ${inc.archives.length === 1 ? "season" : "seasons"}` : ""}. When either of you shares again, the other phone gets the changes.</p>
+      ${part}
+      <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+        <button class="btn primary" type="button" data-d="ok">Add team</button></div>`, {
+      ok: () => {
+        delete inc.part;
+        if (state.teams.some((x) => x.id === inc.id)) inc.id = newItemId(inc);
+        state.teams.push(inc);
+        finishSync(inc, inc.name + " added");
+      },
+    });
+    return;
+  }
+  const { team: merged, log } = mergeTeam(mine, inc);
+  const names = (list, f) => esc(list.map(f).join(", "));
+  const line = (label, list, f) => (list.length ? `<li><strong>${label}:</strong> ${names(list, f)}</li>` : "");
+  const changes = [
+    line("New games", log.games.added, gameLabel), line("Updated games", log.games.updated, gameLabel), line("Deleted games", log.games.removed, gameLabel),
+    line("New players", log.players.added, (p) => p.name), line("Updated players", log.players.updated, (p) => p.name), line("Removed players", log.players.removed, (p) => p.name),
+    line("Past seasons", log.archives, (a) => a.name), log.settings ? `<li><strong>Team settings</strong> (name, size, game, who's here, season totals)</li>` : "",
+  ].join("");
+  const kept = log.kept ? `<p class="hint">You changed ${log.kept} ${log.kept === 1 ? "thing" : "things"} more recently; ${log.kept === 1 ? "it stays" : "they stay"} as you have ${log.kept === 1 ? "it" : "them"}.</p>` : "";
+  if (!log.changes) {
+    openDialog(`<h2>${esc(mine.name)} is up to date</h2>
+      <p class="hint">This phone already has everything in that code.</p>${kept}${part}
+      <div class="dlg-actions"><button class="btn primary" type="button" data-d="cancel">OK</button></div>`);
+    return;
+  }
+  openDialog(`<h2>Update ${esc(mine.name)}?</h2>
+    <p class="hint">Changes from the other coach:</p>
+    <ul class="sync-list">${changes}</ul>${kept}${part}
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+      <button class="btn primary" type="button" data-d="ok">Update team</button></div>`, {
+    ok: () => {
+      Object.keys(mine).forEach((k) => delete mine[k]);
+      Object.assign(mine, merged);
+      finishSync(mine, mine.name + " updated");
+    },
+  });
+}
+function finishSync(t, message) {
+  state.nextId = Math.max(state.nextId, ...allIds().map((x) => x + 1));
+  stampChanges(true); // keep the other coach's stamps
+  state.currentTeamId = t.id;
+  ui = { tab: "games", gameId: null };
+  closeDialog();
+  commit();
+  window.scrollTo(0, 0);
+  toast(message);
+}
+
 // ------------------------------------------------------------------ Actions
 
 const SAMPLE_NAMES = ["Ava", "Ben", "Chloe", "Diego", "Emma", "Finn", "Grace", "Hiro"];
@@ -2751,7 +3105,7 @@ function fillSampleTeam(t) {
   const names = [...SAMPLE_NAMES, ...MORE_NAMES].slice(0, Math.min(16, Math.ceil(field * 1.5)));
   const spots = formationPositions(t.formation).filter((k) => k !== "GK");
   names.forEach((name, i) => t.players.push({
-    id: state.nextId++, name, number: SAMPLE_NUMBERS[i],
+    id: newItemId(t), name, number: SAMPLE_NUMBERS[i],
     goalie: i !== 2, // one kid who doesn't play goal
     preferred: i === 0 && hasGoalie(t.formation) ? ["GK"] : i === 1 ? [spots[spots.length - 1]] : i === 3 ? [spots[0]] : [],
   }));
@@ -2760,7 +3114,7 @@ function fillSampleTeam(t) {
   const sat = new Date(); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7)); // next Saturday
   let side = Math.random() < 0.5 ? "home" : "away";
   for (let i = 0; i < games; i++) {
-    t.games.push({ id: state.nextId++, date: addDays(dateStr(sat), i * 7), opponent: opponents[i], home: side,
+    t.games.push({ id: newItemId(t), date: addDays(dateStr(sat), i * 7), opponent: opponents[i], home: side,
       plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [], time: "", place: "" });
     side = side === "home" ? "away" : "home";
   }
@@ -2783,7 +3137,8 @@ document.getElementById("main").addEventListener("submit", (e) => {
   const input = document.getElementById("add-name");
   const name = input.value.trim();
   if (!name) return;
-  team().players.push({ id: state.nextId++, name, number: "", goalie: true, preferred: [] });
+  const t = team();
+  t.players.push({ id: newItemId(t), name, number: "", goalie: true, preferred: [] });
   commit();
   document.getElementById("add-name").focus();
 });
@@ -2854,7 +3209,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
       break;
     case "sample-team": {
       const nt = newTeam("Sample team", "SIX_2_3", "QUARTERS");
-      SAMPLE_NAMES.forEach((n, i) => nt.players.push({ id: state.nextId++, name: n, number: SAMPLE_NUMBERS[i], goalie: true, preferred: [] }));
+      SAMPLE_NAMES.forEach((n, i) => nt.players.push({ id: newItemId(nt), name: n, number: SAMPLE_NUMBERS[i], goalie: true, preferred: [] }));
       state.teams.push(nt);
       state.currentTeamId = nt.id;
       ui.tab = "players";
@@ -2872,7 +3227,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
       importDialog(t);
       break;
     case "quick-game": {
-      const ng = { id: state.nextId++, date: todayStr(), opponent: "", home: "", time: "", place: "", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] };
+      const ng = { id: newItemId(t), date: todayStr(), opponent: "", home: "", time: "", place: "", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] };
       t.games.push(ng);
       ui.gameId = ng.id;
       commit();
@@ -2946,6 +3301,12 @@ document.getElementById("main").addEventListener("click", async (e) => {
     case "scan-score":
       scanDialog();
       break;
+    case "coach-share":
+      coachShareDialog(t);
+      break;
+    case "coach-get":
+      scanDialog("team");
+      break;
     case "opp-goal": {
       const qi = Number(b.dataset.qi);
       if (!doubleTap("opp:" + qi, "Double-tap to add a " + oppName(g) + " goal")) break;
@@ -2998,6 +3359,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
       if (!a) break;
       if (b.dataset.armed) {
         t.archives = t.archives.filter((x) => x.id !== a.id);
+        forget(t, [a.id]);
         ui.archiveId = null;
         commit();
         toast(a.name + " deleted");
@@ -3102,8 +3464,9 @@ mainEl.addEventListener("click", (e) => {
   if (Date.now() < suppressClickUntil) { e.stopImmediatePropagation(); e.preventDefault(); }
 }, true);
 
+stampChanges(true);
 readHash();
 render();
 initCloud();
-window.addEventListener("hashchange", () => { if (/^#skr?=/.test(location.hash)) { closeDialog(); readHash(); render(); } });
+window.addEventListener("hashchange", () => { if (/^#(skr?|team)=/.test(location.hash)) { closeDialog(); readHash(); render(); } });
 </script>

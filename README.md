@@ -34,6 +34,16 @@ how to move your teams over.)
   and show a code back: tap **Scan score** and the score fills in and the game is marked
   played. The codes carry everything (nothing goes through a server); if the camera can't be
   used, the parent can send the link instead and the coach pastes it.
+- **Other coaches**: keep a team the same on the head coach's and assistant coaches' phones.
+  On the Games tab (or from the team menu), **Share** shows a QR code and **Send link** sends
+  the team by text or email: players, schedule, lineups, goals, season totals and past seasons.
+  The other coach scans the code or opens the link and gets the team. After that, whoever
+  changed something shares again and the other phone shows what's new before updating: new and
+  changed games and players, deletions, and scores. Each game's details, lineup and score merge
+  separately, so one coach can fix the field while the other keeps score; for each, the change
+  made last wins. When a whole season is too much for one code, the code holds the games
+  changed most recently and the link holds everything. The team travels inside the link,
+  compressed (nothing goes through a server), so the link is long rather than short.
 - **Game summary**: once a game is marked played, **Share results** sends a picture of the
   game summary (your team and the opponent with home or away, the score, the date, and each
   kid's positions, playing time and goals) through your phone's share menu, or
@@ -45,7 +55,7 @@ how to move your teams over.)
   goals for and against).
 
 Each coach's teams are saved in their own phone's browser. Use **Back up or move data**
-in the team menu to keep a copy or move to another phone.
+in the team menu to keep a copy or move to another phone, or share a team with another coach.
 
 ## Privacy and security
 
@@ -55,7 +65,8 @@ in the team menu to keep a copy or move to another phone.
   script and load only those fonts, so it can't load anything else or send data anywhere.
   A small offline helper (`sw.js`) keeps a copy of the page and fonts so the home screen app
   opens without internet; it only ever fetches the app's own files and the fonts.
-- Restored backups are checked field by field before use. Only restore backup text you
+- Restored backups, scorekeeper codes and team links from other coaches are checked field by
+  field before use. Only restore backup text you
   made yourself or got from someone you trust, since it contains your teams' names.
 
 ## Code

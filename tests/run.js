@@ -58,7 +58,7 @@ async function openApp(browser, { scheme = "light", url = MAIN, share = true } =
     await page.addInitScript(() => {
       window.__shared = null;
       navigator.canShare = (d) => !!(d && d.files && d.files.length);
-      navigator.share = async (d) => { window.__shared = { title: d.title, text: d.text, files: (d.files || []).map((f) => f.name) }; };
+      navigator.share = async (d) => { window.__shared = { title: d.title, text: d.text, url: d.url, files: (d.files || []).map((f) => f.name) }; };
     });
   }
   await page.goto(url);
@@ -459,6 +459,168 @@ async function scorekeeperTests(browser) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------- Sharing with other coaches
+
+async function coachTests(browser) {
+  console.log("Coaches");
+  const fakeCamera = () => {
+    window.__qr = null;
+    window.BarcodeDetector = class { static async getSupportedFormats() { return ["qr_code"]; } async detect() { return window.__qr ? [{ rawValue: window.__qr }] : []; } };
+  };
+  const A = await openApp(browser), B = await openApp(browser);
+  const a = A.page, b = B.page;
+  for (const x of [a, b]) { await x.addInitScript(fakeCamera); await x.reload(); }
+  const sorted = () => team().games.slice().sort((x, y) => x.date.localeCompare(y.date));
+  // Head coach: a team and a schedule, then the code.
+  await a.click("text=Try it with sample names");
+  await a.evaluate(() => { const t = team(); t.name = "U8 Thunder"; t.players[0].preferred = ["GK"]; t.players[2].goalie = false; commit(); });
+  await a.click("#tab-games");
+  for (const [date, opp] of [["2026-09-12", "Tigers"], ["2026-09-19", '<img src=x onerror="window.__pwned=1">'], ["2026-09-26", "Sharks"]]) {
+    await a.click('[data-action="add-game"]'); await a.fill("#game-date", date); await a.fill("#game-opp", opp); await a.click('[data-d="save"]');
+  }
+  await a.click('[data-action="coach-share"]');
+  await a.waitForSelector(".dlg .qr-box svg");
+  const sync = await a.evaluate(() => team().sync);
+  await a.click('[data-d="send"]');
+  const link = await a.evaluate(() => window.__shared && window.__shared.url);
+  check(/^[0-9a-z]{10}$/.test(sync) && link.startsWith("https://at2martin-commits.github.io/Soccer-Rotation/#team=z") && link.length < 900 &&
+    (await a.getAttribute(".dlg .qr-box path", "d")) === (await a.evaluate((l) => qrSVG(l).match(/ d="([^"]+)"/)[1], link)),
+    "coach shows a team code and sends the same link", link.length + " characters");
+  check(!(await a.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "share dialog: no sideways scrolling");
+  await a.click('[data-d="cancel"]');
+  // Assistant: opens the link on a phone with no teams.
+  await b.goto(MAIN + link.slice(link.indexOf("#")));
+  await b.waitForSelector('.dlg [data-d="ok"]');
+  check((await b.textContent(".dlg h2")) === "Add U8 Thunder?" && (await b.textContent(".dlg")).includes("8 players, 3 games") && !(await b.evaluate(() => location.hash)),
+    "assistant opening the link is offered the team; link cleared");
+  await b.click('[data-d="ok"]');
+  const same = (x) => x.evaluate(() => unstamped([team().sync, team().name, team().players.map((p) => [p.id, p.name, p.number, p.goalie, p.preferred]),
+    team().games.map((g) => [g.id, g.date, g.opponent, g.played, g.goals, g.oppGoals, g.plan]).sort()]));
+  check((await same(a)) === (await same(b)) && (await b.$$(".game-row")).length === 3, "assistant has the same team, players and schedule");
+  check(!(await b.evaluate(() => window.__pwned)) && !(await b.$("main img:not(.install-icon)")) && (await b.textContent("main")).includes("<img src=x"), "names from a link stay plain text");
+  // Game day on the assistant's phone: lineup, goals, played, a new kid. Meanwhile the coach moves a game and deletes one.
+  await b.evaluate((sorted) => { const t = team(), g = eval(sorted)()[0];
+    g.plan = generate(present(t), t.formation, 4, seasonTotals(t, g.id), teamStyle(t)); commit();
+    g.goals.push({ id: g.plan[1].positions.CF, p: 1 }); g.oppGoals.push({ p: 2 }); markPlayed(t, g); commit();
+    t.players.push({ id: newItemId(t), name: "Zoe", number: "21", goalie: true, preferred: [] }); commit(); }, sorted.toString());
+  check(await b.evaluate(() => team().players.at(-1).id >= 1e6 && state.nextId > team().players.at(-1).id), "new kids and games on a shared team get ids that won't clash");
+  await a.evaluate((sorted) => { const t = team(), gs = eval(sorted)(); gs[1].place = "Field 9"; commit(); }, sorted.toString());
+  await a.click('.game-row:has-text("Tigers")'); await a.click('[data-action="edit-game"]');
+  await a.fill("#game-place", "North Park"); await a.click('[data-d="save"]');
+  await a.click('[data-action="back"]');
+  await a.click('.game-row:has-text("Sharks")'); await a.click('[data-action="edit-game"]');
+  await a.click('[data-d="delete"]'); await a.click('[data-d="delete"]');
+  // The assistant shows their code; the coach scans it.
+  await b.click('.game-row:has-text("Tigers")');
+  check((await b.$$('[data-action="coach-share"]')).length === 1, "a played game offers to send the update");
+  await b.click('[data-action="coach-share"]');
+  await b.waitForSelector(".dlg .qr-box svg");
+  const back = await b.evaluate(async () => (await syncLinks(team())).qr);
+  await b.click('[data-d="cancel"]');
+  await a.click('[data-action="coach-get"]');
+  await a.waitForFunction(() => { const v = document.querySelector("#scan-video"); return v && v.srcObject; }, null, { timeout: 5000 }).catch(() => {});
+  check((await a.textContent(".dlg h2")) === "Get an update from a coach" && !!(await a.$("#scan-video")), "get update opens the camera");
+  await a.evaluate((l) => { window.__qr = l; }, back);
+  await a.waitForSelector('.dlg [data-d="ok"]');
+  const preview = await a.innerText(".dlg");
+  check(/Updated games: vs Tigers · Sep 12 · 1–1/.test(preview) && /New players: Zoe/.test(preview) && /changed 2 things more recently/.test(preview) && !/Sharks/.test(preview),
+    "coach sees what the assistant changed; their own newer edits are kept; the deleted game stays deleted", preview.replace(/\s+/g, " "));
+  await a.click('[data-d="ok"]');
+  const merged = await a.evaluate((sorted) => { const gs = eval(sorted)(); return { kids: team().players.length, games: gs.length, played: gs[0].played, goals: gs[0].goals.length, opp: gs[0].oppGoals.length, place: gs[0].place, names: gs[0].names[team().players[0].id] }; }, sorted.toString());
+  check(merged.kids === 9 && merged.games === 2 && merged.played && merged.goals === 1 && merged.opp === 1 && merged.place === "North Park" && merged.names === "Ava",
+    "coach has the assistant's lineup, score and new kid, keeps their own field change, without the deleted game", JSON.stringify(merged));
+  check((await a.textContent("#toast")).includes("U8 Thunder updated"), "update confirmed");
+  // Coach sends back by link; the assistant pastes it.
+  const back2 = await a.evaluate(async () => (await syncLinks(team())).link);
+  await b.click("#team-btn"); await b.click('[data-d="get"]');
+  await b.fill("#scan-paste", "Here you go: " + back2); await b.click('[data-d="paste"]');
+  await b.waitForSelector('.dlg [data-d="ok"]');
+  const preview2 = await b.innerText(".dlg");
+  check(/Deleted games: vs Sharks/.test(preview2) && /Updated games: vs Tigers.*, vs <img/.test(preview2), "assistant gets the coach's deletion and edit by pasted link", preview2.replace(/\s+/g, " "));
+  await b.click('[data-d="ok"]');
+  check((await same(a)) === (await same(b)), "both phones now match");
+  await b.evaluate((l) => useCode(l, false, "team"), back2);
+  await b.waitForSelector(".dlg h2");
+  check((await b.textContent(".dlg h2")) === "U8 Thunder is up to date", "sharing again with no changes says up to date");
+  await b.click('[data-d="cancel"]');
+  await b.reload();
+  await b.evaluate((l) => useCode(l, false, "team"), back2);
+  await b.waitForSelector(".dlg h2");
+  check((await b.textContent(".dlg h2")) === "U8 Thunder is up to date", "still up to date after a reload (stamps saved)");
+  await b.click('[data-d="cancel"]');
+  // The assistant's own scorekeeper code works on the coach's phone, even when the team's id differs.
+  await a.evaluate(() => { const t = team(); const other = newTeam("Other", "SIX_2_3", "QUARTERS"); state.teams.unshift(other); commit(); });
+  const res = await b.evaluate(() => { const t = team(), g = t.games.find((x) => x.opponent === "Tigers"); return "#skr=1." + b36(t.id + 12345) + "." + b36(g.id) + "." + b36(t.players[1].id) + "-0~" + b36(t.players[1].id) + "-3."; });
+  await a.evaluate((r) => applyScoreDialog(readScoreResult(r)), res);
+  check((await a.textContent(".dlg h2")) === "Score from the scorekeeper", "a parent's score code finds the shared game by its id");
+  await a.click('[data-d="cancel"]');
+  // Wrong codes.
+  await a.evaluate(() => scanDialog("team"));
+  await a.fill("#scan-paste", "hello"); await a.click('[data-d="paste"]');
+  check((await a.textContent("#scan-msg")).includes("isn't a team link"), "pasting something else says so");
+  await a.fill("#scan-paste", link.slice(0, -40)); await a.click('[data-d="paste"]');
+  await a.waitForSelector('.dlg h2:has-text("damaged")');
+  check(true, "a cut-off link says it's damaged");
+  await a.click('[data-d="cancel"]');
+  // Lots of games: the code holds the newest, the link holds everything.
+  const big = await a.evaluate(async () => {
+    const t = team();
+    for (let i = 0; i < 14; i++) {
+      const g = { id: newItemId(t), date: addDays("2026-10-03", i * 7), opponent: "Opponent " + i, home: "home", time: "09:30", place: "Central Park", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] };
+      t.games.push(g); commit();
+      g.plan = generate(present(t), t.formation, 4, seasonTotals(t, g.id), teamStyle(t)); g.goals.push({ id: t.players[i % 8].id, p: 1 }); markPlayed(t, g); commit();
+    }
+    const l = await syncLinks(t);
+    return { ...l, last: t.games.at(-1).id, n: t.games.length };
+  });
+  const bigPart = await b.evaluate(async (l) => { const x = await unpackSync(l); return { part: x.part, games: x.games.map((g) => g.id) }; }, big.qr);
+  const bigFull = await b.evaluate(async (l) => (await unpackSync(l)).games.length, big.link);
+  check(big.qr.length <= 1500 && big.games < big.total && bigPart.part && bigPart.games.includes(big.last) && bigFull === big.n && big.link.length < 6000,
+    "too much for one code: the code has the newest games, the link has all", `code ${big.qr.length} chars with ${big.games} of ${big.total} games, link ${big.link.length}`);
+  await a.click('[data-action="back"]').catch(() => {});
+  await a.click("#tab-games"); await a.click('[data-action="coach-share"]');
+  await a.waitForSelector(".dlg .qr-box svg");
+  check((await a.textContent(".dlg")).includes("most recently changed"), "the dialog says the code holds only the newest games");
+  await a.click('[data-d="cancel"]');
+  await b.evaluate((l) => useCode(l, false, "team"), big.qr);
+  await b.waitForSelector('.dlg [data-d="ok"]');
+  check((await b.textContent(".dlg")).includes("only the games changed last"), "a partial code says so");
+  await b.click('[data-d="ok"]');
+  check((await b.evaluate(() => team().games.length)) === 2 + big.games, "a partial code adds its games and deletes nothing");
+  // Archiving a season on one phone moves it on the other.
+  await a.evaluate(() => { const t = team(); t.archives.push({ id: newItemId(t), name: "Fall 2026", archivedAt: Date.now(), games: JSON.parse(JSON.stringify(t.games.filter((g) => g.played))), carry: {}, names: {} });
+    forget(t, t.games.map((g) => g.id)); t.games = []; t.seasonCarry = {}; commit(); });
+  const arch = await a.evaluate(async () => (await syncLinks(team())).link);
+  await b.evaluate((l) => useCode(l, false, "team"), arch);
+  await b.waitForSelector('.dlg [data-d="ok"]');
+  check((await b.textContent(".dlg")).includes("Past seasons: Fall 2026"), "an archived season is offered");
+  await b.click('[data-d="ok"]');
+  check(await b.evaluate(() => team().games.length === 0 && team().archives.length === 1 && team().archives[0].games.length > 10), "archived season arrives; its games leave the current season");
+  // Hostile links: checked like a backup.
+  const evil = await b.evaluate(async () => {
+    const make = async (o) => "#team=" + (await packSync(o));
+    const base = { v: 1, sync: "abcdefghij", id: 5, name: "<b>x</b>", ids: [{}, "__proto__", 1e300, 7], players: [{ id: 7, name: "<i>K</i>", preferred: ["constructor", "LF"] }, { id: "__proto__" }],
+      games: [{ id: 3, date: "nope", lineup: ["0031zzz03|0003|constructor", 5], goals: "0001zz9032", oppGoals: "1x2", absent: "0303", names: { 7: "<s>" }, formation: "valueOf" }, 7, null],
+      carry: { 7: { played: "x" } }, gone: ["__proto__", 2], changed: 1e300 };
+    const ok = await unpackSync(await make(base));
+    return {
+      wrong: [await unpackSync(await make({ ...base, v: 2 })), await unpackSync(await make({ ...base, sync: "<script>" })), await unpackSync("#team=zAAAA"), await unpackSync("#team=j" + btoa("[1,2]")),
+        await unpackSync("#team=z" + "A".repeat(500000))],
+      ok: ok && { name: ok.name, players: ok.players.map((p) => [p.id, p.name, p.preferred.join()]), games: ok.games.map((g) => [g.id, g.date.length, JSON.stringify(g.plan), JSON.stringify(g.goals), JSON.stringify(g.oppGoals), g.formation, JSON.stringify(g.absent)]), gone: ok.gone, changed: ok.changed || 0 },
+      bomb: await unpackSync("#team=z" + b36url(await (async () => { const s = new Blob([new Uint8Array(5e6)]).stream().pipeThrough(new CompressionStream("deflate-raw")); return new Uint8Array(await new Response(s).arrayBuffer()); })())),
+    };
+    function b36url(x) { return b64url(x); }
+  });
+  check(evil.wrong.every((x) => x === null), "wrong version, bad team id, damaged or huge links are refused");
+  check(evil.bomb === null, "a link that unpacks to something huge is refused");
+  check(evil.ok && evil.ok.name === "<b>x</b>" && JSON.stringify(evil.ok.players) === '[[7,"<i>K</i>","LF"],[8,"Player",""]]' && evil.ok.games.length === 1 &&
+    evil.ok.games[0][1] === 10 && evil.ok.games[0][2] === '[{"positions":{"GK":7},"bench":[]},{"positions":{},"bench":[]}]' && evil.ok.games[0][3] === '[{"id":7,"p":2}]' &&
+    evil.ok.games[0][4] === '[{"p":1},{"p":2}]' && evil.ok.games[0][5] === "SIX_2_3" && evil.ok.games[0][6] === "[7,7]" && evil.ok.gone.join() === "2" && evil.ok.changed === 0,
+    "a team link is cleaned field by field", JSON.stringify(evil.ok));
+  check(!A.problems.length && !B.problems.length, "no page errors", [...A.problems, ...B.problems].join(" | "));
+  await A.ctx.close(); await B.ctx.close();
+}
+
 // ---------------------------------------------------------------- Security and data
 
 async function safetyTests(browser) {
@@ -796,13 +958,14 @@ async function iphoneTests(browser) {
   // A fake camera, so the scorekeeper's Scan score can open one.
   const browser = await chromium.launch({ args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
   try {
-    // `node tests/run.js fair` (or planner, screens, iphone, scorekeeper, import, safety) runs just that part.
+    // `node tests/run.js fair` (or planner, screens, iphone, scorekeeper, coaches, import, safety) runs just that part.
     const only = process.argv[2];
     const run = (name) => !only || only === name;
     if (run("planner")) await plannerTests(browser);
     if (run("screens")) { await flowTests(browser, "light"); await flowTests(browser, "dark"); }
     if (run("iphone")) await iphoneTests(browser);
     if (run("scorekeeper")) await scorekeeperTests(browser);
+    if (run("coaches")) await coachTests(browser);
     if (run("import")) await importTests(browser);
     if (run("fair")) await fairnessTests(browser);
     if (run("safety")) await safetyTests(browser);

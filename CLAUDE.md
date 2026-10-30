@@ -74,7 +74,7 @@ asks for changes in plain words.
   pushes, dispatches `pages.yml` on main (Pages only deploys from main).
 - `tests/run.js`: the browser test suite (`node tests/run.js`, about 4 minutes, preinstalled
   Playwright; run it in the background or with a long timeout). `node tests/run.js fair` (or
-  `planner`, `screens`, `iphone`, `scorekeeper`, `safety`) runs one part. "Fair play" stress-tests every size,
+  `planner`, `screens`, `iphone`, `scorekeeper`, `coaches`, `safety`) runs one part. "Fair play" stress-tests every size,
   formation and style with up to 8 extra kids and random favorites, plus 8-game seasons.
 - `THIRD_PARTY_NOTICES.md`: Material Icons (Apache 2.0, full text included), fonts (SIL OFL 1.1).
   If you add an icon, take it from Material Icons and add its name to the list there.
@@ -119,19 +119,30 @@ asks for changes in plain words.
    `…#skr=<score>`; the coach scans it (BarcodeDetector + camera, Chrome on Android), opens it
    with the phone's camera app, or pastes it. Applying replaces the game's goals and marks it played.
    Codes are untrusted: every field is checked like a backup.
-7. **Saving**: `normalize()` cleans saved data and restored backups **field by field** (numbers,
+7. **Coach sync** (its own section after the scorekeeper: `coachShareDialog`, `syncLinks`, `sharedTeam`/`cleanShared`,
+   `packSync`/`unpackSync`, `mergeTeam`, `useTeamCode`): a team travels as `…#team=z<deflate-raw JSON, base64url>`
+   (`j` = uncompressed fallback), with kids written as 2-character places in `ids`. A shared team has a
+   random `sync` id; the receiving phone adds it, or merges into its team with the same `sync`. Every
+   save stamps what changed (`stampChanges`: `changed` ms on the team's settings and each player, and
+   per game part `changed: {info, lineup, score}`, see `GAME_PARTS`); the merge keeps the newer part.
+   Deleted ids on a shared team go in `gone` (`forget`) so deletions carry over. New players/games/seasons
+   on a shared team get random ids (`newItemId`, 1e6–1e9) so two coaches adding at once don't clash.
+   A QR code holds links up to `SYNC_QR_MAX` characters; past that it holds the most recently changed
+   games (`part`), and the link holds everything. `scanDialog("team")`/`useCode` read both kinds of code.
+8. **Saving**: `normalize()` cleans saved data and restored backups **field by field** (numbers,
    real dates, known positions, plain text). `commit()` saves to localStorage and, on claude.ai,
    to the viewer's private `db` doc `data/users/<id>/state` (`initCloud`).
-8. **Rendering** (`render`, `playersView`, `gamesView`, `gameView`, `periodsHTML`, `goalsHTML`,
+9. **Rendering** (`render`, `playersView`, `gamesView`, `gameView`, `periodsHTML`, `goalsHTML`,
    `scoreboardHTML`, `playingTimeHTML`, `seasonView`, `archiveView`, `archivedGameView`) and
    **dialogs** (`teamDialog`, `gameDialog`, `playerDialog`, `shareResultsDialog`, `aboutDialog`,
    `backupDialog`, `archiveDialog`, `confirmDialog`). Clicks go through `data-action` (main) and
    `data-d` (dialogs) handlers.
 
 Saved shape: `{version: 3, nextId, currentTeamId, savedAt, teams: [{id, name, formation, format,
-style?, players: [{id, name, number: "" or up to 3 digits, goalie, preferred: [POS]}], absent: [id], games: [{id, date, opponent,
-home: ""|"home"|"away", time: ""|"HH:MM", place, plan: [{positions: {POS: id}, bench: [id], formation?}], formation, format, played,
-names: {id: name}, goals: [{id, p}], oppGoals: [{p}], absent?}], seasonCarry: {id: totals},
+style?, sync?, changed?, gone?: [id], players: [{id, name, number: "" or up to 3 digits, goalie, preferred: [POS], changed?}],
+absent: [id], games: [{id, date, opponent, home: ""|"home"|"away", time: ""|"HH:MM", place,
+plan: [{positions: {POS: id}, bench: [id], formation?}], formation, format, played, names: {id: name}, goals: [{id, p}],
+oppGoals: [{p}], absent?, changed?: {info?, lineup?, score?}}], seasonCarry: {id: totals},
 archives: [{id, name, archivedAt, games, carry, names}]}]}`.
 
 ## Rules for changes
@@ -142,6 +153,9 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
 - **Any new saved field must be added to `normalize()` / `cleanGame()` with a type check**, and
   every place that builds a game object (search `goals: []`) must include new arrays, or older
   data and restored backups break.
+- **New players, games and seasons take their id from `newItemId(t)`**, and anything deleted from a
+  team goes through `forget(t, ids)`, or coach sync clashes ids or brings deleted things back.
+  A new game field belongs in one of the `GAME_PARTS`, or it won't sync.
 - **Escape every piece of user text** with `esc()` before it goes into HTML, attributes included.
 - Keep **one inline `<script>`**, no external scripts, no `fetch`/network calls, no inline event
   handlers (`onclick=`): the CSP would block them. Inline `style=` attributes are fine.
