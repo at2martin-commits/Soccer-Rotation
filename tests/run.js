@@ -176,9 +176,9 @@ async function flowTests(browser, scheme) {
   await p.click('[data-d="save"]');
   check((await p.textContent(".roster")).includes("Ava M") && (await p.textContent(".roster")).includes("Likes LF"), "edit player name and preference");
   const diego = await p.$eval('.pinfo:has-text("Diego")', (b) => b.dataset.id);
-  await p.uncheck("#here-" + diego);
   await p.fill("#add-name", "Zoe"); await p.press("#add-name", "Enter");
-  check((await p.textContent(".count")).startsWith("8 of 9"), "attendance and add player", await p.textContent(".count"));
+  check((await p.$$(".roster .player")).length === 9 && !(await p.$('main input[type="checkbox"]')) && (await p.textContent("main")).includes("set position preferences"),
+    "add player; no attendance boxes on the Players tab, just how to edit");
   // Schedule.
   await p.click("#tab-games");
   await p.click('[data-action="add-game"]');
@@ -192,6 +192,9 @@ async function flowTests(browser, scheme) {
   await p.click('[data-action="make-lineup"]');
   const opts6 = await p.$$eval('.dlg input[name="formation"]', (r) => r.map((x) => x.value));
   check(opts6.join(",") === "SIX_2_3,SIX_2_1_2,SIX_3_2", "make lineup asks for a 6v6 formation", opts6.join(","));
+  check((await p.$$('.dlg input[name="here"]:checked')).length === 9 && (await p.textContent("#lineup-ok")).includes("9 here"), "make lineup asks who's here: everyone checked", (await p.$$('.dlg input[name="here"]:checked')).length + " " + (await p.textContent("#lineup-ok")));
+  await p.uncheck("#here-" + diego);
+  check((await p.textContent("#lineup-ok")).includes("8 here"), "unchecking a kid updates the count", await p.textContent("#lineup-ok"));
   await p.click('[data-d="ok"]');
   const plan = await p.evaluate(() => state.teams[0].games.find((g) => g.opponent === "Tigers").plan);
   check(plan.length === 4 && plan.every((q) => ![...Object.values(q.positions), ...q.bench].includes(Number(diego))), "lineup made without the absent kid");

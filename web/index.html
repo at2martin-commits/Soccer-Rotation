@@ -159,11 +159,8 @@ select.field { appearance: auto; }
 .roster { display: grid; gap: 8px; }
 .player {
   display: flex; align-items: center; gap: 6px;
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 6px 4px 4px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 6px 4px 10px;
 }
-.player.out .pname { color: var(--muted); text-decoration: line-through; }
-.here { display: grid; place-items: center; width: 44px; height: 44px; flex: none; }
-.here input { width: 22px; height: 22px; accent-color: var(--accent); margin: 0; }
 .pinfo { flex: 1; min-width: 0; background: none; border: 0; text-align: left; padding: 8px 4px; display: grid; }
 .pname { font-weight: 600; overflow-wrap: anywhere; }
 .jersey { color: var(--muted); font-weight: 700; margin-right: 6px; font-variant-numeric: tabular-nums; }
@@ -176,7 +173,8 @@ select.field { appearance: auto; }
   flex: 1; min-width: 0; min-height: 44px; padding: 8px 12px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--surface);
 }
-.count { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; letter-spacing: 0.02em; }
+.here-list { display: grid; gap: 6px; }
+.here-list .choice input { width: 22px; height: 22px; accent-color: var(--accent); }
 
 /* Lineup */
 .period { padding: 0; overflow: hidden; gap: 0; }
@@ -1382,9 +1380,6 @@ function goalsByPlayer(games) {
   games.forEach((g) => g.goals.forEach((x) => { out[x.id] = (out[x.id] || 0) + 1; }));
   return out;
 }
-function sameIds(a, b) {
-  return a.length === b.length && a.every((p) => b.some((q) => q.id === p.id));
-}
 function newTeam(name, formation, format) {
   return { id: state.nextId++, name, formation, format, players: [], absent: [], games: [], seasonCarry: {}, archives: [] };
 }
@@ -1535,12 +1530,10 @@ function teamView(t) {
 
 function playersView(t) {
   const rows = t.players.map((p) => {
-    const here = !t.absent.includes(p.id);
     const likes = formationPositions(t.formation).filter((k) => p.preferred.includes(k)).map((k) => POS[k].short);
     const notes = [likes.length ? "Likes " + likes.join(", ") : "", p.goalie || !hasGoalie(t.formation) ? "" : "No goalie"].filter(Boolean).join(" · ");
     return `
-      <div class="player${here ? "" : " out"}">
-        <label class="here"><input type="checkbox" id="here-${p.id}" data-action="toggle-here" data-id="${p.id}" ${here ? "checked" : ""} aria-label="${esc(p.name)} is here"></label>
+      <div class="player">
         <button class="pinfo" type="button" data-action="edit-player" data-id="${p.id}">
           <span class="pname">${p.number ? `<span class="jersey">#${esc(p.number)}</span>` : ""}${esc(p.name)}</span>
           ${notes ? `<span class="pnotes">${esc(notes)}</span>` : ""}
@@ -1549,10 +1542,7 @@ function playersView(t) {
       </div>`;
   }).join("");
   return `
-    <div class="panel">
-      <div><span class="count">${present(t).length} of ${t.players.length} here today</span></div>
-      <p class="hint">Uncheck kids who are absent. Tap a name to edit.</p>
-    </div>
+    <p class="hint">Tap a player to edit their name and jersey number, and set position preferences.</p>
     <form class="add-row" data-form="add-player">
       <input class="field" id="add-name" name="name" placeholder="Add a player" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="New player name">
       <button class="btn primary" type="submit" aria-label="Add player">${ICON.plus} Add</button>
@@ -1605,8 +1595,6 @@ function gamesView(t) {
 
 function gameView(t, g) {
   const plan = g.plan;
-  const here = present(t);
-  const changed = plan && !g.played && !sameIds(planPlayers(t, g), here);
   let html = `
     <div class="game-head">
       <button class="back" type="button" data-action="back">${ICON.back} All games</button>
@@ -1619,10 +1607,10 @@ function gameView(t, g) {
 
   if (!g.played) {
     html += `<div class="btn-row">
-      <button class="btn primary grow" type="button" data-action="make-lineup" ${here.length ? "" : "disabled"}>${ICON.refresh} ${plan ? "New lineup" : "Make lineup"}</button>
+      <button class="btn primary grow" type="button" data-action="make-lineup" ${t.players.length ? "" : "disabled"}>${ICON.refresh} ${plan ? "New lineup" : "Make lineup"}</button>
       ${plan ? `<button class="btn" type="button" data-action="game-more" aria-label="More: share lineup, parent scorekeeper">${ICON.more} More</button>` : ""}
     </div>`;
-    if (plan) html += `<button class="btn full" type="button" data-action="mark-played" ${changed ? "disabled" : ""}>${ICON.check} Mark as played</button>`;
+    if (plan) html += `<button class="btn full" type="button" data-action="mark-played">${ICON.check} Mark as played</button>`;
   } else {
     html += `<div class="btn-row">
       <span class="played-note grow">${ICON.check} Played</span>
@@ -1631,11 +1619,8 @@ function gameView(t, g) {
   }
 
   if (!plan) {
-    return html + `<p class="hint">${t.players.length
-      ? `Uses the ${here.length} of ${t.players.length} kids checked in on the Players tab.`
-      : "Add your players on the Players tab first."}</p>`;
+    return html + `<p class="hint">${t.players.length ? "Make lineup asks who's here first." : "Add your players on the Players tab first."}</p>`;
   }
-  if (changed) html += `<div class="warn">Attendance changed since this lineup was made. Tap New lineup to include the right kids.</div>`;
   html += `<p class="hint">Hold and drag to swap kids. Double-tap a kid, or <strong>Opponent + Goal</strong>, to add a goal. ★ = preferred spot.</p>`;
 
   const byId = Object.fromEntries(t.players.map((p) => [p.id, p]));
@@ -1962,6 +1947,45 @@ function teamDialog(existing) {
 const periodWord = (format) => (format === "QUARTERS" ? "quarter" : format === "HALVES" ? "half" : "segment");
 
 /** Asks for a formation of the same size as `current`. `restLabel` adds a "rest of the game" box. */
+/** Game day: who's here, and (when the size has a choice) the formation, then the lineup. */
+function lineupDialog(t, g) {
+  // Everyone starts checked; a new lineup for the same game starts from who was in the last one.
+  const inPlan = new Set(planIds(g));
+  const here = (p) => !g.plan || inPlan.has(p.id);
+  const kids = t.players.map((p) => `
+    <label class="choice"><input type="checkbox" name="here" id="here-${p.id}" value="${p.id}" ${here(p) ? "checked" : ""}>
+      <span>${p.number ? `<span class="jersey">#${esc(p.number)}</span>` : ""}${esc(p.name)}</span></label>`).join("");
+  const choices = sizeFormations(sizeOf(t.formation));
+  const forms = choices.length < 2 ? "" : choices.map((k) => `
+    <label class="choice"><input type="radio" name="formation" id="formation-${k}" value="${k}" ${k === t.formation ? "checked" : ""}>
+      <span>${esc(formationName(k))}${FORMATIONS[k].hint ? `<small class="choice-hint">${esc(FORMATIONS[k].hint)}</small>` : ""}</span></label>`).join("");
+  const label = (n) => `${g.plan ? "Make new lineup" : "Make lineup"} (${n} here)`;
+  openDialog(`<h2>Who's here today?</h2>
+    <p class="hint">Uncheck anyone who's absent.${g.plan ? " A new lineup replaces any swaps you made." : ""}</p>
+    <div class="here-list">${kids}</div>
+    ${forms ? `<div class="group"><span class="lbl">Formation</span>${forms}
+      <p class="hint">You can change it for any ${periodWord(t.format)} during the game.</p></div>` : ""}
+    <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
+      <button class="btn primary" type="button" data-d="ok" id="lineup-ok">${esc(label(t.players.filter(here).length))}</button></div>`, {
+    ok: () => {
+      const ids = new Set([...dlg.querySelectorAll('input[name="here"]:checked')].map((x) => Number(x.value)));
+      if (!ids.size) { toast("Check at least one player"); return; }
+      const picked = dlg.querySelector('input[name="formation"]:checked');
+      const formation = picked ? picked.value : t.formation;
+      t.absent = t.players.filter((p) => !ids.has(p.id)).map((p) => p.id);
+      g.plan = generate(present(t), formation, FORMATS[t.format].periods, seasonTotals(t, g.id), teamStyle(t));
+      g.formation = formation;
+      g.format = t.format;
+      t.formation = formation; // offered first next game
+      closeDialog();
+      commit();
+    },
+  });
+  dlg.querySelectorAll('input[name="here"]').forEach((x) => x.addEventListener("change", () => {
+    dlg.querySelector("#lineup-ok").textContent = label(dlg.querySelectorAll('input[name="here"]:checked').length);
+  }));
+}
+
 function formationDialog(title, hint, current, okLabel, restLabel, onOk) {
   const opts = sizeFormations(sizeOf(current)).map((k) => `
     <label class="choice"><input type="radio" name="formation" id="formation-${k}" value="${k}" ${k === current ? "checked" : ""}>
@@ -3164,13 +3188,6 @@ document.getElementById("main").addEventListener("submit", (e) => {
   document.getElementById("add-name").focus();
 });
 
-document.getElementById("main").addEventListener("change", (e) => {
-  const el = e.target;
-  if (el.dataset.action !== "toggle-here") return;
-  const t = team(), id = Number(el.dataset.id);
-  t.absent = el.checked ? t.absent.filter((x) => x !== id) : [...t.absent, id];
-  commit();
-});
 
 // Goals take a double-tap so a stray tap can't add one. A lone tap gets a reminder instead.
 let lastTap = null, tapHintTimer = null;
@@ -3293,24 +3310,9 @@ document.getElementById("main").addEventListener("click", async (e) => {
     case "edit-game":
       gameDialog(t, g);
       break;
-    case "make-lineup": {
-      const go = (formation) => {
-        g.plan = generate(present(t), formation, FORMATS[t.format].periods, seasonTotals(t, g.id), teamStyle(t));
-        g.formation = formation;
-        g.format = t.format;
-        t.formation = formation; // offered first next game
-        commit();
-      };
-      const choices = sizeFormations(sizeOf(t.formation));
-      if (choices.length < 2) {
-        if (g.plan) confirmDialog("Replace this lineup?", "Any swaps you made will be lost.", "Replace", () => go(t.formation));
-        else go(t.formation);
-      } else {
-        formationDialog("Formation for this game", `You can change it for any ${periodWord(t.format)} after, without moving kids on or off the bench.${g.plan ? " A new lineup replaces any swaps you made." : ""}`,
-          t.formation, g.plan ? "Make new lineup" : "Make lineup", null, go);
-      }
+    case "make-lineup":
+      lineupDialog(t, g);
       break;
-    }
     case "period-formation": {
       const qi = Number(b.dataset.qi);
       const word = periodWord(g.format);

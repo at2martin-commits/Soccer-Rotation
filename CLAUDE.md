@@ -187,6 +187,9 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
   else about a team (edit, share with coaches, calendar file, archive season, backup, home screen,
   delete) is on the **Team** tab
   (`teamView`, one plain list of buttons), the 4th tab at the bottom right.
+- Attendance is taken on game day: **Make lineup** opens `lineupDialog` (who's here, everyone
+  checked by default, plus the formation when the size has a choice). The Players tab has no
+  attendance boxes, just the list and how to edit. `t.absent` is set from that dialog.
 - The game screen keeps two main buttons (Make lineup, Mark as played); Share lineup, Parent
   scorekeeper code and Scan the parent's score sit behind **More** (`game-more`). Hints are one short
   line. Sharing with coaches lives only on the Team tab.

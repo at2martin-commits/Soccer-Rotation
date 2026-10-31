@@ -11,7 +11,7 @@ how to move your teams over.)
   new one). The **Team** tab (bottom right) edits the team, shares it with other coaches, saves the
   schedule as a calendar file, archives the season, backs up your data and deletes the team. Each team has its own players, size (4v4 with no goalie, 6v6, 7v7, 9v9 or 11v11), game format (4 quarters
   or 2 halves) and position setting (Rotate or Stick to positions).
-- **Players**: add players, check off who's here today, and tap a name to rename them,
+- **Players**: add players, and tap a name to rename them,
   give them a jersey number, mark who can't play goalie, or pick preferred positions. A kid with a preferred
   position plays there more often (and nearby spots on the same line a bit more), but
   still rotates, and every kid gets a turn at forward and defense first. A team can
@@ -23,7 +23,8 @@ how to move your teams over.)
   **Add games to your calendar (.ics)** on the Team tab saves the schedule as a calendar file
   that Google Calendar, Samsung Calendar, Apple Calendar or Outlook can import (games with a
   start time are an hour long; games without one are all-day).
-- **Lineups**: making a lineup asks which formation you're playing (each size has several,
+- **Lineups**: on game day, **Make lineup** asks who's here (everyone starts checked; uncheck
+  anyone absent) and which formation you're playing (each size has several,
   from attacking to defensive, spelled out like "3 defense, 3 mid, 2 forward"). Each game's
   lineup covers every period at once. Play time is split as evenly as possible, nobody sits
   twice in a row, goalie turns are spread out, and kids move between positions. Each period
