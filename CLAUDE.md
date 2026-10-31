@@ -19,9 +19,9 @@ asks for changes in plain words.
 2. **Steven's rule (Oct 2026): don't push or run the full suite after every change**; it wastes his
    session time. After a change: run only the test part that covers it (`node tests/run.js screens`,
    `coaches`, `scorekeeper`, ...; add checks for new features) and commit. The session's stop hook
-   wants pushed commits, so push to the session's own branch (not `beta`; that doesn't deploy).
-   **Only when he says "push to beta"**: run the full `node tests/run.js` (all checks must pass),
-   then `git push origin beta`. That push runs `.github/workflows/beta.yml`, which asks
+   wants the checked-out branch pushed, so work on the session's own branch (checked out from `beta`)
+   and push that; it doesn't deploy. **Only when he says "push to beta"**: run the full
+   `node tests/run.js` (all checks must pass), then `git push origin HEAD:beta`. That push runs `.github/workflows/beta.yml`, which asks
    `pages.yml` (on main) to rebuild; the beta link updates in about 2 minutes. Confirm with
    `gh run list -R at2martin-commits/Soccer-Rotation -w pages.yml -L 1` (wait for `completed success`).
    Then tell Steven what changed and to reload the beta link.
