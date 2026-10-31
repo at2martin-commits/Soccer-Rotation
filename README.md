@@ -8,8 +8,8 @@ without internet too. (On iPhone the home screen copy keeps its own data, and th
 how to move your teams over.)
 
 - **Teams**: keep several teams (tap the team name at the top to switch teams or start a
-  new one). The **Team** tab (bottom right) edits the team, shares it with other coaches,
-  backs up your data and deletes the team. Each team has its own players, size (4v4 with no goalie, 6v6, 7v7, 9v9 or 11v11), game format (4 quarters
+  new one). The **Team** tab (bottom right) edits the team, shares it with other coaches, saves the
+  schedule as a calendar file, archives the season, backs up your data and deletes the team. Each team has its own players, size (4v4 with no goalie, 6v6, 7v7, 9v9 or 11v11), game format (4 quarters
   or 2 halves) and position setting (Rotate or Stick to positions).
 - **Players**: add players, check off who's here today, and tap a name to rename them,
   give them a jersey number, mark who can't play goalie, or pick preferred positions. A kid with a preferred
@@ -20,6 +20,9 @@ how to move your teams over.)
 - **Games**: add the dates from your schedule, with an optional start time, opponent, field
   and home or away.
   On game day, open the game and make its lineup. Past games keep their lineups to look back on.
+  **Add games to your calendar (.ics)** on the Team tab saves the schedule as a calendar file
+  that Google Calendar, Samsung Calendar, Apple Calendar or Outlook can import (games with a
+  start time are an hour long; games without one are all-day).
 - **Lineups**: making a lineup asks which formation you're playing (each size has several,
   from attacking to defensive, spelled out like "3 defense, 3 mid, 2 forward"). Each game's
   lineup covers every period at once. Play time is split as evenly as possible, nobody sits
@@ -50,7 +53,7 @@ how to move your teams over.)
   kid's positions, playing time and goals) through your phone's share menu, or
   **Download picture** saves it.
 - **Season**: tap **Mark as played** after a game and future lineups give extra time to
-  kids who've sat more, and spread goalie turns across the season. **Archive season**
+  kids who've sat more, and spread goalie turns across the season. **Archive season** (Team tab)
   saves the totals and played games under **Past seasons** (with each game's lineup) and
   starts a fresh season. The Season tab also shows the team's record (wins, losses, ties,
   goals for and against).

@@ -107,7 +107,9 @@ asks for changes in plain words.
 3. **Share text / game summary**: `lineupText` (pre-game text share), `reportData` → `reportHTML`
    (preview) and `reportCanvas` (the PNG). The summary always lists: Team (Home/Away), Opponent,
    Score, Date, Game, then the playing-time table and absences.
-4. **Schedule import**, **hidden** (`SHOW_IMPORT = false`; Steven: "doesn't work like I want", may
+4. **Calendar export** (`calendarFile`, `exportCalendar`, saved with `saveFile`): the schedule as a
+   `.ics` file from the Team tab; timed games last `GAME_MINUTES`, others are all-day; UID is
+   `<sync or team id>-<game id>@soccer-rotation`. Then **Schedule import**, **hidden** (`SHOW_IMPORT = false`; Steven: "doesn't work like I want", may
    return; the code and tests stay, tests open it with `importDialog(team())`) (`importDialog` → `readCalendar`; `parseCalendar`, `calDate`, `calendarGames`,
    `importPlan`): reads a `.ics` file the coach downloads (Blue Sombrero / Stack Sports team calendar
    Export/Sync gives a `webcal://` link; the app turns it into an https download link, since it never
@@ -182,7 +184,8 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
 - No license has been chosen for the app itself (all rights reserved). Ask before adding one.
 
 - The team name at the top left (`teamMenu`) only switches teams and makes a new one. Everything
-  else about a team (edit, share with coaches, backup, home screen, delete) is on the **Team** tab
+  else about a team (edit, share with coaches, calendar file, archive season, backup, home screen,
+  delete) is on the **Team** tab
   (`teamView`, one plain list of buttons), the 4th tab at the bottom right.
 - The game screen keeps two main buttons (Make lineup, Mark as played); Share lineup, Parent
   scorekeeper code and Scan the parent's score sit behind **More** (`game-more`). Hints are one short
