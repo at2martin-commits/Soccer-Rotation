@@ -38,6 +38,9 @@ asks for changes in plain words.
      Tell Steven briefly what the checks found and fixed.
    - Bump `APP_VERSION` in `web/index.html` (1.1 → 1.2 for features, 1.1.1 for small fixes) and the
      "Version" line at the top of `README.md`; make sure the README feature list matches the app.
+   - Push `beta` first and **wait for its Pages run to finish** before pushing `main`: pushing both at
+     once makes the beta rebuild cancel main's own run, which GitHub shows as a failed check ("1/2")
+     even though the site deploys fine.
    - `git checkout main && git merge --ff-only beta && git push origin main`, then
      `git checkout beta && git merge main && git push origin beta` so both match.
    - Wait for the Pages deploy (command above).
