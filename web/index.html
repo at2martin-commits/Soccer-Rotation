@@ -1499,6 +1499,7 @@ function render() {
         <p class="hint">Add your players and game dates, check off who showed up, and get a lineup where every kid gets fair time on the field.</p>
         <button class="btn primary" type="button" data-action="new-team">${ICON.plus} Create a team</button>
         <button class="btn" type="button" data-action="sample-team">Try it with sample names</button>
+        <label class="switch-row" for="sample-games"><input type="checkbox" id="sample-games"><span>Add sample games too</span></label>
         <button class="btn" type="button" data-action="coach-get">${ICON.scan} Get a team from another coach</button>
       </div>`;
     main.insertAdjacentHTML("afterbegin", installCard());
@@ -3154,6 +3155,10 @@ function fillSampleTeam(t) {
     goalie: i !== 2, // one kid who doesn't play goal
     preferred: i === 0 && hasGoalie(t.formation) ? ["GK"] : i === 1 ? [spots[spots.length - 1]] : i === 3 ? [spots[0]] : [],
   }));
+  addSampleGames(t);
+}
+/** 8–10 weekly Saturday games from next Saturday, home and away taking turns. */
+function addSampleGames(t) {
   const games = 8 + Math.floor(Math.random() * 3);
   const opponents = shuffle(SAMPLE_OPPONENTS.slice());
   const sat = new Date(); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7 || 7)); // next Saturday
@@ -3277,6 +3282,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
     case "sample-team": {
       const nt = newTeam("Sample team", "SIX_2_3", "QUARTERS");
       SAMPLE_NAMES.forEach((n, i) => nt.players.push({ id: newItemId(nt), name: n, number: SAMPLE_NUMBERS[i], goalie: true, preferred: [] }));
+      if (document.getElementById("sample-games").checked) addSampleGames(nt);
       state.teams.push(nt);
       state.currentTeamId = nt.id;
       ui.tab = "players";

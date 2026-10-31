@@ -343,6 +343,14 @@ async function flowTests(browser, scheme) {
   check((await p.evaluate(() => state.teams.length)) === 2 && (await p.textContent('[data-action="delete-team"]')).includes("Tap again"), "deleting a team asks for a second tap");
   await p.click('[data-action="delete-team"]');
   check((await p.evaluate(() => state.teams.map((x) => x.name).join())) === "U8 Thunder" && (await p.textContent("#team-name")) === "U8 Thunder", "team deleted; the other team is shown");
+  // First screen: sample names, with or without sample games.
+  const fresh = await openApp(browser, { scheme });
+  check(!(await fresh.page.isChecked("#sample-games")), "sample games box starts unchecked");
+  await fresh.page.check("#sample-games"); await fresh.page.click("text=Try it with sample names");
+  const sample = await fresh.page.evaluate(() => ({ kids: team().players.length, games: team().games.map((g) => [g.date, g.opponent, g.home]), today: todayStr() }));
+  check(sample.kids === 8 && sample.games.length >= 8 && sample.games.length <= 10 && sample.games.every((g) => g[0] > sample.today && g[1]),
+    "sample names with sample games: 8 kids and 8–10 upcoming games", `${sample.kids} kids, ${sample.games.length} games`);
+  await fresh.ctx.close();
   check(!problems.length, "no page errors or blocked loads", problems.join(" | "));
   await ctx.close();
 }

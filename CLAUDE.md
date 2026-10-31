@@ -179,6 +179,8 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
   email-text/table features and the league-director address were removed on purpose.
 - Preferred positions are a strong lean in *rotate*, a lock in *stick*; 9v9 defaults to stick.
 - Sample team names mix boys and girls: Ava, Ben, Chloe, Diego, Emma, Finn, Grace, Hiro.
+  The first screen's "Try it with sample names" has an "Add sample games too" box (unchecked by
+  default) that adds 8–10 weekly games (`addSampleGames`, also used by the beta's `fillSampleTeam`).
 - About screen (ⓘ, top right): "Created by Steven Martin, with Claude, an AI model made by
   Anthropic", © 2026 Steven Martin, open-source credits.
 - No license has been chosen for the app itself (all rights reserved). Ask before adding one.
