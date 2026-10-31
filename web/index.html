@@ -103,7 +103,7 @@ nav.tabs {
   background: var(--surface); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-nav.tabs .wrap { display: grid; grid-template-columns: repeat(3, 1fr); }
+nav.tabs .wrap { display: grid; grid-template-columns: repeat(4, 1fr); }
 nav.tabs button {
   background: none; border: 0; padding: 10px 4px 12px; display: grid; justify-items: center; gap: 2px;
   font-family: var(--font-display); font-weight: 600; font-size: 1rem; letter-spacing: 0.04em;
@@ -433,6 +433,10 @@ a.btn.primary { color: var(--accent-ink); }
     <button type="button" role="tab" data-tab="season" id="tab-season">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-7"/></svg>
       Season
+    </button>
+    <button type="button" role="tab" data-tab="team" id="tab-team">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+      Team
     </button>
   </div>
 </nav>
@@ -1461,7 +1465,7 @@ async function addToHomeScreen() {
   const note = !ios
     ? `<p class="hint">Then open Soccer Rotation from its icon. Your teams stay saved on this phone. If you already added it, look for the icon on your home screen.</p>`
     : `<div class="warn ios-note"><strong>On iPhone, the home screen app starts empty.</strong> It keeps its own data, separate from this browser.${hasData
-      ? ` To bring your teams along: before you add it, open the team menu, tap <strong>Back up or move data</strong>, then <strong>Copy backup</strong>. Open the new app, tap <strong>Back up or move data</strong> there, paste into <strong>Restore from a backup</strong>, and tap <strong>Replace my data</strong>.`
+      ? ` To bring your teams along: before you add it, open the <strong>Team</strong> tab, tap <strong>Back up or move data</strong>, then <strong>Copy backup</strong>. Open the new app, tap <strong>Back up or move data</strong> there, paste into <strong>Restore from a backup</strong>, and tap <strong>Replace my data</strong>.`
       : ` Add it first, then set up your team from the home screen icon.`}</div>`;
   openDialog(`<h2>Add to your home screen</h2>
     ${ios ? note : ""}
@@ -1501,9 +1505,39 @@ function render() {
   else if (ui.tab === "games") {
     const g = currentGame(t);
     main.innerHTML = g ? gameView(t, g) : gamesView(t);
-  } else main.innerHTML = seasonView(t);
+  } else if (ui.tab === "team") main.innerHTML = teamView(t);
+  else main.innerHTML = seasonView(t);
   // Not inside an open game, to keep game day uncluttered.
   if (!(ui.tab === "games" && currentGame(t))) main.insertAdjacentHTML("afterbegin", installCard());
+}
+
+// The Team tab: this team's settings, sharing with other coaches, backups, and deleting the team.
+function teamView(t) {
+  const size = sizeOf(t.formation) + (hasGoalie(t.formation) ? "" : ", no goalie");
+  return `
+    <section class="panel">
+      <h2>${esc(t.name)}</h2>
+      <p class="hint">${esc(size)} · ${esc(FORMATS[t.format].label)} · ${esc(STYLES[teamStyle(t)].label)}</p>
+      <button class="btn" type="button" data-action="edit-team">${ICON.edit} Edit name, size, game and positions</button>
+    </section>
+    <section class="panel sk-panel"><h2>Share with other coaches</h2>
+      <p class="hint">Keep this team the same on every coach's phone: share after you set up the schedule, and after each game. Got a code or link from another coach? <strong>Get update</strong> adds their team or updates this one.</p>
+      <div class="btn-row">
+        <button class="btn grow" type="button" data-action="coach-share">${ICON.qr} Share</button>
+        <button class="btn grow" type="button" data-action="coach-get">${ICON.scan} Get update</button>
+      </div></section>
+    <section class="panel"><h2>Back up or move data</h2>
+      <p class="hint">Copy a backup of all your teams to keep it safe, or to move them to another phone.</p>
+      <button class="btn" type="button" data-action="backup">Back up or move data</button>
+    </section>
+    ${canInstall() ? `<section class="panel"><h2>Home screen</h2>
+      <p class="hint">Put Soccer Rotation on your home screen so it opens like an app, even without internet.</p>
+      <button class="btn" type="button" data-action="install">${ICON.plus} Add to home screen</button>
+    </section>` : ""}
+    <section class="panel"><h2>Delete team</h2>
+      <p class="hint">Deletes ${esc(t.name)} from this phone: players, games and past seasons.${t.sync ? " Other coaches keep their copy." : ""}</p>
+      <button class="btn danger" type="button" data-action="delete-team">Delete ${esc(t.name)}</button>
+    </section>`;
 }
 
 function playersView(t) {
@@ -1565,22 +1599,15 @@ function gamesView(t) {
       ${hasToday ? "" : `<button class="btn" type="button" data-action="quick-game">Game today</button>`}
     </div>
     ${SHOW_IMPORT ? `<button class="btn full" type="button" data-action="import-schedule">Import schedule (Blue Sombrero)</button>` : ""}`;
-  const coaches = `
-    <section class="panel sk-panel"><h2>Other coaches</h2>
-      <p class="hint">Keep this team the same on every coach's phone: share after you set up the schedule, and after each game.</p>
-      <div class="btn-row">
-        <button class="btn grow" type="button" data-action="coach-share">${ICON.qr} Share</button>
-        <button class="btn grow" type="button" data-action="coach-get">${ICON.scan} Get update</button>
-      </div></section>`;
   if (!games.length) {
     return html + `<div class="panel empty">
       <h2>Add your schedule</h2>
       <p class="hint">Enter the dates from your team's schedule. On game day, open the game to make its lineup. Past games keep their lineups so you can look back.</p>
-    </div>` + coaches;
+    </div>`;
   }
   if (upcoming.length) html += `<h3 class="section-title">Coming up</h3><div class="game-list">${upcoming.map(row).join("")}</div>`;
   if (past.length) html += `<h3 class="section-title">Past games</h3><div class="game-list">${past.map(row).join("")}</div>`;
-  return html + coaches;
+  return html;
 }
 
 function gameView(t, g) {
@@ -1879,20 +1906,10 @@ function teamMenu() {
   openDialog(`<h2>Teams</h2>
     <div class="team-list">${list}</div>
     <div class="dlg-actions">
-      ${canInstall() ? `<button class="btn" type="button" data-d="install">Add to home screen</button>` : ""}
-      ${t ? `<button class="btn" type="button" data-d="coach">${ICON.share} Share with another coach</button>` : ""}
-      <button class="btn" type="button" data-d="get">${ICON.scan} Get a team from a coach</button>
-      <button class="btn" type="button" data-d="backup">Back up or move data</button>
-      ${t ? `<button class="btn" type="button" data-d="edit">${ICON.edit} Edit this team</button>` : ""}
       <button class="btn primary" type="button" data-d="new">${ICON.plus} New team</button>
     </div>`, {
     pick: (b) => { state.currentTeamId = Number(b.dataset.id); ui.gameId = null; ui.archiveId = null; closeDialog(); commit(); },
-    edit: () => teamDialog(team()),
     new: () => teamDialog(null),
-    backup: backupDialog,
-    coach: () => coachShareDialog(team()),
-    get: () => scanDialog("team"),
-    install: () => { closeDialog(); addToHomeScreen(); },
   });
 }
 
@@ -1918,7 +1935,6 @@ function teamDialog(existing) {
         <span>${esc(v.label)}<small class="choice-hint">${esc(v.hint)}</small></span></label>`).join("")}</div>
     ${hasOpenLineups ? `<p class="hint">Changing players on the field or the game clears lineups for games not yet played. Played games keep theirs.</p>` : ""}
     <div class="dlg-actions">
-      ${existing ? `<button class="btn danger" type="button" data-d="delete" style="margin-right:auto">Delete team</button>` : ""}
       <button class="btn" type="button" data-d="cancel">Cancel</button>
       <button class="btn primary" type="button" data-d="save">Save</button>
     </div>`, {
@@ -1948,18 +1964,6 @@ function teamDialog(existing) {
       }
       closeDialog();
       commit();
-    },
-    delete: (b) => {
-      if (b.dataset.armed) {
-        state.teams = state.teams.filter((x) => x.id !== existing.id);
-        state.currentTeamId = state.teams[0] ? state.teams[0].id : null;
-        ui.gameId = null;
-        closeDialog();
-        commit();
-      } else {
-        b.dataset.armed = "1";
-        b.textContent = "Tap again to delete " + existing.name;
-      }
     },
   });
   let styleTouched = !!(existing && existing.style);
@@ -3205,7 +3209,25 @@ document.getElementById("main").addEventListener("click", async (e) => {
       break;
     case "install-later":
       hideInstallCard();
-      toast("You can add it any time from the team menu");
+      toast("You can add it any time from the Team tab");
+      break;
+    case "edit-team":
+      teamDialog(t);
+      break;
+    case "backup":
+      backupDialog();
+      break;
+    case "delete-team":
+      if (b.dataset.armed) {
+        state.teams = state.teams.filter((x) => x.id !== t.id);
+        state.currentTeamId = state.teams[0] ? state.teams[0].id : null;
+        ui = { tab: state.teams.length ? "team" : "players", gameId: null };
+        commit();
+        toast(t.name + " deleted");
+      } else {
+        b.dataset.armed = "1";
+        b.textContent = "Tap again to delete " + t.name + " for good";
+      }
       break;
     case "sample-team": {
       const nt = newTeam("Sample team", "SIX_2_3", "QUARTERS");
@@ -3214,7 +3236,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
       state.currentTeamId = nt.id;
       ui.tab = "players";
       commit();
-      toast("Sample team added. Rename or delete it from the team menu.");
+      toast("Sample team added. Rename or delete it on the Team tab.");
       break;
     }
     case "edit-player":

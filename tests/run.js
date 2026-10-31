@@ -161,8 +161,10 @@ async function flowTests(browser, scheme) {
   await p.click('[data-action="install-later"]');
   await p.reload();
   check(!(await p.$(".install-card")), "Not now hides the card for good");
+  await p.click("#tab-team");
+  check(!!(await p.$('main [data-action="install"]')), "Team tab still has Add to home screen");
   await p.click("#team-btn");
-  check(!!(await p.$('.dlg [data-d="install"]')), "team menu still has Add to home screen");
+  check((await p.$$eval(".dlg button", (x) => x.map((b) => b.dataset.d))).join() === "pick,new", "team menu: just the teams and New team");
   await p.evaluate(() => closeDialog());
   await p.click("#tab-players");
   await p.evaluate(() => { state.teams[0].name = "U8 Thunder"; commit(); });
@@ -309,6 +311,16 @@ async function flowTests(browser, scheme) {
   await p.reload();
   check((await p.evaluate(() => state.teams.length)) === 2, "data survives reload");
   check(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "no sideways scrolling");
+  // Team tab: settings, sharing, backup, delete.
+  await p.click("#tab-team");
+  const teamTab = await p.textContent("main");
+  check(["U12 Blaze", "9v9", "Stick to positions", "Share with other coaches", "Back up or move data", "Delete U12 Blaze"].every((x) => teamTab.includes(x)) &&
+    (await p.$$("nav.tabs [data-tab]")).length === 4 && (await p.getAttribute("#tab-team", "aria-selected")) === "true", "4th tab: team settings, sharing, backup and delete");
+  check(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "Team tab: no sideways scrolling");
+  await p.click('[data-action="delete-team"]');
+  check((await p.evaluate(() => state.teams.length)) === 2 && (await p.textContent('[data-action="delete-team"]')).includes("Tap again"), "deleting a team asks for a second tap");
+  await p.click('[data-action="delete-team"]');
+  check((await p.evaluate(() => state.teams.map((x) => x.name).join())) === "U8 Thunder" && (await p.textContent("#team-name")) === "U8 Thunder", "team deleted; the other team is shown");
   check(!problems.length, "no page errors or blocked loads", problems.join(" | "));
   await ctx.close();
 }
@@ -478,7 +490,7 @@ async function coachTests(browser) {
   for (const [date, opp] of [["2026-09-12", "Tigers"], ["2026-09-19", '<img src=x onerror="window.__pwned=1">'], ["2026-09-26", "Sharks"]]) {
     await a.click('[data-action="add-game"]'); await a.fill("#game-date", date); await a.fill("#game-opp", opp); await a.click('[data-d="save"]');
   }
-  await a.click('[data-action="coach-share"]');
+  await a.click("#tab-team"); await a.click('[data-action="coach-share"]');
   await a.waitForSelector(".dlg .qr-box svg");
   const sync = await a.evaluate(() => team().sync);
   await a.click('[data-d="send"]');
@@ -505,7 +517,7 @@ async function coachTests(browser) {
     t.players.push({ id: newItemId(t), name: "Zoe", number: "21", goalie: true, preferred: [] }); commit(); }, sorted.toString());
   check(await b.evaluate(() => team().players.at(-1).id >= 1e6 && state.nextId > team().players.at(-1).id), "new kids and games on a shared team get ids that won't clash");
   await a.evaluate((sorted) => { const t = team(), gs = eval(sorted)(); gs[1].place = "Field 9"; commit(); }, sorted.toString());
-  await a.click('.game-row:has-text("Tigers")'); await a.click('[data-action="edit-game"]');
+  await a.click("#tab-games"); await a.click('.game-row:has-text("Tigers")'); await a.click('[data-action="edit-game"]');
   await a.fill("#game-place", "North Park"); await a.click('[data-d="save"]');
   await a.click('[data-action="back"]');
   await a.click('.game-row:has-text("Sharks")'); await a.click('[data-action="edit-game"]');
@@ -517,7 +529,7 @@ async function coachTests(browser) {
   await b.waitForSelector(".dlg .qr-box svg");
   const back = await b.evaluate(async () => (await syncLinks(team())).qr);
   await b.click('[data-d="cancel"]');
-  await a.click('[data-action="coach-get"]');
+  await a.click("#tab-team"); await a.click('[data-action="coach-get"]');
   await a.waitForFunction(() => { const v = document.querySelector("#scan-video"); return v && v.srcObject; }, null, { timeout: 5000 }).catch(() => {});
   check((await a.textContent(".dlg h2")) === "Get an update from a coach" && !!(await a.$("#scan-video")), "get update opens the camera");
   await a.evaluate((l) => { window.__qr = l; }, back);
@@ -532,7 +544,7 @@ async function coachTests(browser) {
   check((await a.textContent("#toast")).includes("U8 Thunder updated"), "update confirmed");
   // Coach sends back by link; the assistant pastes it.
   const back2 = await a.evaluate(async () => (await syncLinks(team())).link);
-  await b.click("#team-btn"); await b.click('[data-d="get"]');
+  await b.click("#tab-team"); await b.click('[data-action="coach-get"]');
   await b.fill("#scan-paste", "Here you go: " + back2); await b.click('[data-d="paste"]');
   await b.waitForSelector('.dlg [data-d="ok"]');
   const preview2 = await b.innerText(".dlg");
@@ -578,7 +590,7 @@ async function coachTests(browser) {
   check(big.qr.length <= 1500 && big.games < big.total && bigPart.part && bigPart.games.includes(big.last) && bigFull === big.n && big.link.length < 6000,
     "too much for one code: the code has the newest games, the link has all", `code ${big.qr.length} chars with ${big.games} of ${big.total} games, link ${big.link.length}`);
   await a.click('[data-action="back"]').catch(() => {});
-  await a.click("#tab-games"); await a.click('[data-action="coach-share"]');
+  await a.click("#tab-team"); await a.click('[data-action="coach-share"]');
   await a.waitForSelector(".dlg .qr-box svg");
   check((await a.textContent(".dlg")).includes("most recently changed"), "the dialog says the code holds only the newest games");
   await a.click('[data-d="cancel"]');
@@ -635,10 +647,10 @@ async function safetyTests(browser) {
       plan: [{ positions: { GK: evil, [evil]: 2, LF: 2 }, bench: [evil] }], goals: [{ id: evil, p: evil }], oppGoals: [{ p: evil }, { p: 1 }] }],
     archives: [{ id: evil, name: evil, games: [{ id: 9, date: evil, opponent: evil, plan: [{ positions: { LF: 2 }, bench: [] }], played: true }] }] }],
     nextId: evil };
-  await p.click("#team-btn"); await p.click('[data-d="backup"]');
+  await p.click("#tab-team"); await p.click('[data-action="backup"]');
   await p.fill("#backup-in", JSON.stringify(bad)); await p.click('[data-d="restore"]');
   for (const sel of ["#tab-players", ".pinfo", '[data-d="cancel"]', "#tab-games", ".game-row", '[data-action="share-results"]', '[data-d="cancel"]',
-    '[data-action="edit-game"]', '[data-d="cancel"]', "#tab-season", '[data-action="open-archive"]', ".game-row", "#team-btn", '[data-d="edit"]', '[data-d="cancel"]']) {
+    '[data-action="edit-game"]', '[data-d="cancel"]', "#tab-season", '[data-action="open-archive"]', ".game-row", "#tab-team", '[data-action="edit-team"]', '[data-d="cancel"]']) {
     await p.click(sel).catch(() => {});
     await p.waitForTimeout(100);
   }
@@ -784,7 +796,7 @@ async function fairnessTests(browser) {
   check(r.seasonGoalie.length === 0, "over 8 games, goalie turns spread (within two)", r.seasonGoalie.join(" | "));
   // On screen: a 9v9 team, extra kids added, favorites set and then changed, lineups remade.
   await page.click("text=Try it with sample names");
-  await page.click("#team-btn"); await page.click('[data-d="edit"]'); await page.check("#size-9v9"); await page.click('[data-d="save"]');
+  await page.click("#tab-team"); await page.click('[data-action="edit-team"]'); await page.check("#size-9v9"); await page.click('[data-d="save"]');
   await page.click('[data-action="install-later"]').catch(() => {});
   await page.click("#tab-players");
   for (const n of ["Isla", "Jack", "Kenji", "Lucia", "Mateo", "Nora"]) { await page.fill("#add-name", n); await page.press("#add-name", "Enter"); }

@@ -7,8 +7,9 @@ Tap **Add to home screen** in the app to put it on your phone like an app; it th
 without internet too. (On iPhone the home screen copy keeps its own data, and the app explains
 how to move your teams over.)
 
-- **Teams**: keep several teams (tap the team name at the top to switch). Each has its
-  own players, size (4v4 with no goalie, 6v6, 7v7, 9v9 or 11v11), game format (4 quarters
+- **Teams**: keep several teams (tap the team name at the top to switch teams or start a
+  new one). The **Team** tab (bottom right) edits the team, shares it with other coaches,
+  backs up your data and deletes the team. Each team has its own players, size (4v4 with no goalie, 6v6, 7v7, 9v9 or 11v11), game format (4 quarters
   or 2 halves) and position setting (Rotate or Stick to positions).
 - **Players**: add players, check off who's here today, and tap a name to rename them,
   give them a jersey number, mark who can't play goalie, or pick preferred positions. A kid with a preferred
@@ -35,7 +36,7 @@ how to move your teams over.)
   played. The codes carry everything (nothing goes through a server); if the camera can't be
   used, the parent can send the link instead and the coach pastes it.
 - **Other coaches**: keep a team the same on the head coach's and assistant coaches' phones.
-  On the Games tab (or from the team menu), **Share** shows a QR code and **Send link** sends
+  On the Team tab, **Share** shows a QR code and **Send link** sends
   the team by text or email: players, schedule, lineups, goals, season totals and past seasons.
   The other coach scans the code or opens the link and gets the team. After that, whoever
   changed something shares again and the other phone shows what's new before updating: new and
@@ -55,7 +56,7 @@ how to move your teams over.)
   goals for and against).
 
 Each coach's teams are saved in their own phone's browser. Use **Back up or move data**
-in the team menu to keep a copy or move to another phone, or share a team with another coach.
+on the Team tab to keep a copy or move to another phone, or share a team with another coach.
 
 ## Privacy and security
 

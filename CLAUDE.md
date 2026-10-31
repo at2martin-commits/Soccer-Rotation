@@ -132,8 +132,8 @@ asks for changes in plain words.
 8. **Saving**: `normalize()` cleans saved data and restored backups **field by field** (numbers,
    real dates, known positions, plain text). `commit()` saves to localStorage and, on claude.ai,
    to the viewer's private `db` doc `data/users/<id>/state` (`initCloud`).
-9. **Rendering** (`render`, `playersView`, `gamesView`, `gameView`, `periodsHTML`, `goalsHTML`,
-   `scoreboardHTML`, `playingTimeHTML`, `seasonView`, `archiveView`, `archivedGameView`) and
+9. **Rendering** (`render`; tabs Players, Games, Season, Team: `playersView`, `gamesView`, `gameView`, `periodsHTML`, `goalsHTML`,
+   `scoreboardHTML`, `playingTimeHTML`, `seasonView`, `archiveView`, `archivedGameView`, `teamView`) and
    **dialogs** (`teamDialog`, `gameDialog`, `playerDialog`, `shareResultsDialog`, `aboutDialog`,
    `backupDialog`, `archiveDialog`, `confirmDialog`). Clicks go through `data-action` (main) and
    `data-d` (dialogs) handlers.
@@ -174,6 +174,12 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
 - About screen (ⓘ, top right): "Created by Steven Martin, with Claude, an AI model made by
   Anthropic", © 2026 Steven Martin, open-source credits.
 - No license has been chosen for the app itself (all rights reserved). Ask before adding one.
+
+- The team name at the top left (`teamMenu`) only switches teams and makes a new one. Everything
+  else about a team (edit, share with coaches, backup, home screen, delete) is on the **Team** tab
+  (`teamView`), the 4th tab at the bottom right.
+- A server for syncing (Firebase / Google Drive) was offered; Steven said never mind. Sharing stays
+  QR codes and links, with nothing sent to a server.
 
 ## Ideas offered but not built
 
