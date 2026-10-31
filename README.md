@@ -28,7 +28,7 @@ how to move your teams over.)
   defensive, spelled out like "3 defense, 3 mid, 2 forward"). A 6v6 team with fewer than 6 kids
   gets a warning and picks how to play short: no goalie (2 defense, 3 forward), or a goalie plus
   1 defense and 3 forward, or plus 2 defense and 2 forward. Borrowing a kid from another team? Check
-  **Guest player** at the bottom of the list: they get fair time on the field (never in goal) and
+  **Guest player** at the bottom of the list (and type their name if you like): they get fair time on the field (never in goal) and
   stay off the Players tab and season totals. Each game's
   lineup covers every period at once. Play time is split as evenly as possible, nobody sits
   twice in a row, goalie turns are spread out, and kids move between positions. Each period

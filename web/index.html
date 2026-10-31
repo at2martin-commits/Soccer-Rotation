@@ -175,7 +175,7 @@ select.field { appearance: auto; }
 }
 .here-list { display: grid; gap: 6px; }
 .here-list .choice input { width: 22px; height: 22px; accent-color: var(--accent); }
-.here-list .choice:last-child { border-top: 1px dashed var(--line); padding-top: 8px; } /* the guest */
+.here-list .guest-row { border-top: 1px dashed var(--line); padding-top: 8px; }
 
 /* Lineup */
 .period { padding: 0; overflow: hidden; gap: 0; }
@@ -1377,7 +1377,7 @@ function planPlayers(t, g) {
 }
 /** Names for a game's lineup: current names, falling back to the name saved when it was played. */
 function gameNames(t, g) {
-  return { ...g.names, ...Object.fromEntries(t.players.map((p) => [p.id, p.name])) };
+  return { ...g.names, ...Object.fromEntries(t.players.filter((p) => !(p.guest && g.names[p.id])).map((p) => [p.id, p.name])) };
 }
 /** Season totals: carried-over totals plus every game marked played (optionally leaving one out). */
 function seasonTotals(t, excludeId) {
@@ -1977,7 +1977,7 @@ function lineupDialog(t, g) {
   const guest = t.players.find((p) => p.guest) || guestPlayer();
   const here = (p) => (g.plan ? inPlan.has(p.id) : !p.guest);
   const kid = (p) => `
-    <label class="choice"><input type="checkbox" name="here" id="here-${p.id}" value="${p.id}" ${here(p) ? "checked" : ""}>
+    <label class="choice${p.guest ? " guest-row" : ""}"><input type="checkbox" name="here" id="here-${p.id}" value="${p.id}" ${here(p) ? "checked" : ""}>
       <span>${p.number ? `<span class="jersey">#${esc(p.number)}</span>` : ""}${esc(p.name)}${p.guest ? `<small class="choice-hint">Borrowed from another team</small>` : ""}</span></label>`;
   const kids = roster(t).map(kid).join("") + kid(guest);
   const radio = (name, k, checked) => `
@@ -1990,7 +1990,8 @@ function lineupDialog(t, g) {
   const short = (n) => shorts.length && n < full;
   openDialog(`<h2>Who's here today?</h2>
     <p class="hint">Uncheck anyone who's absent.${g.plan ? " A new lineup replaces any swaps you made." : ""}</p>
-    <div class="here-list">${kids}</div>
+    <div class="here-list">${kids}
+      <input class="field" id="guest-name" value="${esc(g.names[GUEST_ID] || "")}" placeholder="Guest's name (optional)" autocomplete="off" autocapitalize="words" maxlength="80" aria-label="Guest's name"></div>
     ${forms ? `<div class="group" id="full-forms"><span class="lbl">Formation</span>${forms}
       <p class="hint">You can change it for any ${periodWord(t.format)} during the game.</p></div>` : ""}
     ${shorts.length ? `<div class="group" id="short-forms" hidden><div class="warn">Not enough players for ${full} on the field. How do you want to play?</div>
@@ -2004,7 +2005,11 @@ function lineupDialog(t, g) {
       if (short(ids.size) && !shortPick) { toast("Pick how to play short-handed"); dlg.querySelector("#short-forms").scrollIntoView({ block: "center" }); return; }
       const picked = short(ids.size) ? shortPick : dlg.querySelector('input[name="formation"]:checked');
       const formation = picked ? picked.value : t.formation;
-      if (ids.has(GUEST_ID) && !t.players.some((p) => p.guest)) t.players.push(guest);
+      if (ids.has(GUEST_ID)) {
+        if (!t.players.some((p) => p.guest)) t.players.push(guest);
+        // The guest's name belongs to this game, so another game's guest can have another name.
+        g.names[GUEST_ID] = text(dlg.querySelector("#guest-name").value.trim()) || guestPlayer().name;
+      }
       t.absent = t.players.filter((p) => !ids.has(p.id)).map((p) => p.id);
       g.plan = generate(present(t), formation, FORMATS[t.format].periods, seasonTotals(t, g.id), teamStyle(t));
       g.formation = formation;
@@ -2020,6 +2025,7 @@ function lineupDialog(t, g) {
     dlg.querySelector("#lineup-ok").textContent = label(n);
     if (shorts.length) dlg.querySelector("#short-forms").hidden = !short(n);
     if (forms) dlg.querySelector("#full-forms").hidden = !!short(n);
+    dlg.querySelector("#guest-name").hidden = !dlg.querySelector("#here-" + GUEST_ID).checked;
   };
   dlg.querySelectorAll('input[name="here"]').forEach((x) => x.addEventListener("change", update));
   update();
@@ -3260,7 +3266,7 @@ function addGoal(t, g, qi, slot) {
 function markPlayed(t, g) {
   g.played = true;
   const inLineup = planPlayers(t, g);
-  inLineup.forEach((p) => { g.names[p.id] = p.name; });
+  inLineup.forEach((p) => { if (!(p.guest && g.names[p.id])) g.names[p.id] = p.name; });
   g.absent = roster(t).filter((p) => !inLineup.includes(p)).map((p) => p.id);
   g.absent.forEach((id) => { g.names[id] = t.players.find((p) => p.id === id).name; });
 }
