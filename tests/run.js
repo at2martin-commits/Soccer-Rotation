@@ -381,6 +381,22 @@ async function flowTests(browser, scheme) {
   await fp.check("#short-SIX_SHORT_NO_GK"); await fp.click('[data-d="ok"]');
   const noGk = await fp.evaluate(() => currentGame(team()).plan);
   check(noGk.every((q) => q.positions.GK == null && Object.keys(q.positions).length === 5), "no goalie: 5 on the field, nobody in goal");
+  // A guest player borrowed from another team: only on Make lineup, absent unless checked.
+  await fp.click('[data-action="make-lineup"]');
+  const guestRow = await fp.$eval(".here-list .choice:last-child", (l) => ({ text: l.textContent, checked: l.querySelector("input").checked, id: l.querySelector("input").value }));
+  check(guestRow.text.includes("Guest player") && !guestRow.checked && guestRow.id === "0", "Make lineup lists a Guest player last, unchecked", JSON.stringify(guestRow));
+  await fp.check("#here-0");
+  check((await fp.isHidden("#short-forms")) && (await fp.textContent("#lineup-ok")).includes("6 here"), "checking the guest makes 6: no short-handed alert");
+  await fp.click('[data-d="ok"]');
+  const withGuest = await fp.evaluate(() => { const g = currentGame(team()); return { inPlan: planIds(g).includes(0), goalie: g.plan.some((q) => q.positions.GK === 0), spots: g.plan.every((q) => Object.keys(q.positions).length === 6) }; });
+  check(withGuest.inPlan && !withGuest.goalie && withGuest.spots && (await fp.textContent(".timeline")).includes("Guest player"), "the guest plays (not in goal) and shows in playing time");
+  await fp.click('[data-action="mark-played"]'); await fp.click('[data-d="ok"]');
+  const guestGame = await fp.evaluate(() => ({ absent: currentGame(team()).absent }));
+  await fp.click("#tab-players");
+  check(!(await fp.textContent(".roster")).includes("Guest") && (await fp.$$(".roster .player")).length === 8 && !guestGame.absent.includes(0), "the guest isn't on the Players tab or in the absences");
+  await fp.click("#tab-season");
+  check(!(await fp.textContent(".season")).includes("Guest"), "the guest isn't in season totals");
+  await fp.click("#tab-games"); await fp.click('[data-action="quick-game"]').catch(() => {});
   await fresh.ctx.close();
   check(!problems.length, "no page errors or blocked loads", problems.join(" | "));
   await ctx.close();

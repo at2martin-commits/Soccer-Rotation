@@ -147,7 +147,7 @@ asks for changes in plain words.
    `data-d` (dialogs) handlers.
 
 Saved shape: `{version: 3, nextId, currentTeamId, savedAt, teams: [{id, name, formation, format,
-style?, sync?, changed?, gone?: [id], players: [{id, name, number: "" or up to 3 digits, goalie, preferred: [POS], changed?}],
+style?, sync?, changed?, gone?: [id], players: [{id, name, number: "" or up to 3 digits, goalie, preferred: [POS], changed?, guest?}],
 absent: [id], games: [{id, date, opponent, home: ""|"home"|"away", time: ""|"HH:MM", place,
 plan: [{positions: {POS: id}, bench: [id], formation?}], formation, format, played, names: {id: name}, goals: [{id, p}],
 oppGoals: [{p}], absent?, changed?: {info?, lineup?, score?}}], seasonCarry: {id: totals},
@@ -189,6 +189,10 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
   else about a team (edit, share with coaches, calendar file, archive season, backup, home screen,
   delete) is on the **Team** tab
   (`teamView`, one plain list of buttons), the 4th tab at the bottom right.
+- **Guest player** (a kid borrowed from another team): `GUEST_ID` 0, `guestPlayer()`, `guest: true`
+  (kept by `normalize` only on id 0, so every coach's copy has the same one). Made on first use in
+  `lineupDialog`, listed last and unchecked there (absent by default); never goalie; left out of the
+  Players tab, season totals, absences and the missing-number note via `roster(t)`.
 - Short-handed 6v6: when fewer kids are checked than the formation has spots, `lineupDialog` swaps
   the formation choice for a warning and the `short: true` formations (`SIX_SHORT_NO_GK`, `SIX_SHORT_1_3`,
   `SIX_SHORT_2_2`); one must be picked. `sizeFormations(size, short)` keeps them out of normal pickers;

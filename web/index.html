@@ -175,6 +175,7 @@ select.field { appearance: auto; }
 }
 .here-list { display: grid; gap: 6px; }
 .here-list .choice input { width: 22px; height: 22px; accent-color: var(--accent); }
+.here-list .choice:last-child { border-top: 1px dashed var(--line); padding-top: 8px; } /* the guest */
 
 /* Lineup */
 .period { padding: 0; overflow: hidden; gap: 0; }
@@ -809,7 +810,7 @@ function reportData(t, g) {
   const names = gameNames(t, g);
   const players = planPlayers(t, g);
   const goals = goalsByPlayer([g]);
-  const absentIds = g.absent || t.players.filter((p) => !players.includes(p)).map((p) => p.id);
+  const absentIds = g.absent || roster(t).filter((p) => !players.includes(p)).map((p) => p.id);
   return {
     title: t.name + (g.opponent ? " vs " + g.opponent : ""),
     team: t.name,
@@ -1214,6 +1215,7 @@ function normalize(s) {
         goalie: p.goalie !== false,
         preferred: [...new Set((Array.isArray(p.preferred) ? p.preferred : []).filter((k) => known(POS, k)))],
         ...(stamp(p.changed) ? { changed: stamp(p.changed) } : {}),
+        ...(p.guest === true && cleanId(p.id) === GUEST_ID ? { guest: true } : {}),
       }))),
       absent: idList(raw.absent),
     };
@@ -1360,6 +1362,12 @@ async function initCloud() {
 
 const team = () => state.teams.find((t) => t.id === state.currentTeamId) || state.teams[0] || null;
 const present = (t) => t.players.filter((p) => !t.absent.includes(p.id));
+// A kid borrowed from another team for a game. Every team has the same one (id 0, so two coaches'
+// copies match); it's made on first use, shown only on Make lineup, and absent unless checked there.
+const GUEST_ID = 0;
+const guestPlayer = () => ({ id: GUEST_ID, name: "Guest player", number: "", goalie: false, preferred: [], guest: true });
+/** The team's own kids, without the guest. */
+const roster = (t) => t.players.filter((p) => !p.guest);
 const currentGame = (t) => (t && ui.gameId != null ? t.games.find((g) => g.id === ui.gameId) || null : null);
 const currentArchive = (t) => (t && ui.archiveId != null ? t.archives.find((a) => a.id === ui.archiveId) || null : null);
 function planPlayers(t, g) {
@@ -1540,7 +1548,7 @@ function teamView(t) {
 }
 
 function playersView(t) {
-  const rows = t.players.map((p) => {
+  const rows = roster(t).map((p) => {
     const likes = formationPositions(t.formation).filter((k) => p.preferred.includes(k)).map((k) => POS[k].short);
     const notes = [likes.length ? "Likes " + likes.join(", ") : "", p.goalie || !hasGoalie(t.formation) ? "" : "No goalie"].filter(Boolean).join(" · ");
     return `
@@ -1618,7 +1626,7 @@ function gameView(t, g) {
 
   if (!g.played) {
     html += `<div class="btn-row">
-      <button class="btn primary grow" type="button" data-action="make-lineup" ${t.players.length ? "" : "disabled"}>${ICON.refresh} ${plan ? "New lineup" : "Make lineup"}</button>
+      <button class="btn primary grow" type="button" data-action="make-lineup" ${roster(t).length ? "" : "disabled"}>${ICON.refresh} ${plan ? "New lineup" : "Make lineup"}</button>
       ${plan ? `<button class="btn" type="button" data-action="game-more" aria-label="More: share lineup, parent scorekeeper">${ICON.more} More</button>` : ""}
     </div>`;
     if (plan) html += `<button class="btn full" type="button" data-action="mark-played">${ICON.check} Mark as played</button>`;
@@ -1630,7 +1638,7 @@ function gameView(t, g) {
   }
 
   if (!plan) {
-    return html + `<p class="hint">${t.players.length ? "Make lineup asks who's here first." : "Add your players on the Players tab first."}</p>`;
+    return html + `<p class="hint">${roster(t).length ? "Make lineup asks who's here first." : "Add your players on the Players tab first."}</p>`;
   }
   html += `<p class="hint">Hold and drag to swap kids. Double-tap a kid, or <strong>Opponent + Goal</strong>, to add a goal. ★ = preferred spot.</p>`;
 
@@ -1757,7 +1765,7 @@ function seasonView(t) {
   const played = t.games.filter((g) => g.played).length;
   const goals = goalsByPlayer(t.games);
   const keeper = hasGoalie(t.formation);
-  const rows = t.players.map((p) => {
+  const rows = roster(t).map((p) => {
     const s = totals[p.id] || { games: 0, played: 0, sat: 0, goalie: 0 };
     return { name: p.name, ...s, goals: goals[p.id] || 0 };
   });
@@ -1964,11 +1972,14 @@ const periodWord = (format) => (format === "QUARTERS" ? "quarter" : format === "
 /** Game day: who's here, and (when the size has a choice) the formation, then the lineup. */
 function lineupDialog(t, g) {
   // Everyone starts checked; a new lineup for the same game starts from who was in the last one.
+  // The guest starts unchecked, unless they were in this game's last lineup.
   const inPlan = new Set(planIds(g));
-  const here = (p) => !g.plan || inPlan.has(p.id);
-  const kids = t.players.map((p) => `
+  const guest = t.players.find((p) => p.guest) || guestPlayer();
+  const here = (p) => (g.plan ? inPlan.has(p.id) : !p.guest);
+  const kid = (p) => `
     <label class="choice"><input type="checkbox" name="here" id="here-${p.id}" value="${p.id}" ${here(p) ? "checked" : ""}>
-      <span>${p.number ? `<span class="jersey">#${esc(p.number)}</span>` : ""}${esc(p.name)}</span></label>`).join("");
+      <span>${p.number ? `<span class="jersey">#${esc(p.number)}</span>` : ""}${esc(p.name)}${p.guest ? `<small class="choice-hint">Borrowed from another team</small>` : ""}</span></label>`;
+  const kids = roster(t).map(kid).join("") + kid(guest);
   const radio = (name, k, checked) => `
     <label class="choice"><input type="radio" name="${name}" id="${name}-${k}" value="${k}" ${checked ? "checked" : ""}>
       <span>${esc(formationName(k))}${FORMATIONS[k].hint ? `<small class="choice-hint">${esc(FORMATIONS[k].hint)}</small>` : ""}</span></label>`;
@@ -1985,7 +1996,7 @@ function lineupDialog(t, g) {
     ${shorts.length ? `<div class="group" id="short-forms" hidden><div class="warn">Not enough players for ${full} on the field. How do you want to play?</div>
       ${shorts.map((k) => radio("short", k, false)).join("")}</div>` : ""}
     <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
-      <button class="btn primary" type="button" data-d="ok" id="lineup-ok">${esc(label(t.players.filter(here).length))}</button></div>`, {
+      <button class="btn primary" type="button" data-d="ok" id="lineup-ok">${esc(label([...roster(t), guest].filter(here).length))}</button></div>`, {
     ok: () => {
       const ids = new Set([...dlg.querySelectorAll('input[name="here"]:checked')].map((x) => Number(x.value)));
       if (!ids.size) { toast("Check at least one player"); return; }
@@ -1993,6 +2004,7 @@ function lineupDialog(t, g) {
       if (short(ids.size) && !shortPick) { toast("Pick how to play short-handed"); dlg.querySelector("#short-forms").scrollIntoView({ block: "center" }); return; }
       const picked = short(ids.size) ? shortPick : dlg.querySelector('input[name="formation"]:checked');
       const formation = picked ? picked.value : t.formation;
+      if (ids.has(GUEST_ID) && !t.players.some((p) => p.guest)) t.players.push(guest);
       t.absent = t.players.filter((p) => !ids.has(p.id)).map((p) => p.id);
       g.plan = generate(present(t), formation, FORMATS[t.format].periods, seasonTotals(t, g.id), teamStyle(t));
       g.formation = formation;
@@ -2671,7 +2683,7 @@ function scorekeeperDialog(t, g) {
   const link = scorekeeperLink(t, g);
   const svg = link ? qrSVG(link, "Scorekeeper code for " + t.name) : "";
   if (!svg) { toast("This lineup is too big for a code"); return; }
-  const missing = planPlayers(t, g).filter((p) => !p.number).length;
+  const missing = planPlayers(t, g).filter((p) => !p.number && !p.guest).length;
   openDialog(`<h2>Parent scorekeeper</h2>
     <p class="hint">A parent points their phone's camera at this code and opens the link. They get this lineup with jersey numbers and tap goals for each kid and for ${esc(oppName(g))}. After the game they show you a code: tap <strong>More</strong>, then <strong>Scan the parent's score</strong>.</p>
     <div class="qr-box">${svg}</div>
@@ -3113,7 +3125,7 @@ async function useTeamCode(raw) {
   if (!mine) {
     const played = inc.games.filter((g) => g.played).length;
     openDialog(`<h2>Add ${esc(inc.name)}?</h2>
-      <p class="hint">Another coach shared this team: ${inc.players.length} ${inc.players.length === 1 ? "player" : "players"}, ${inc.games.length} ${inc.games.length === 1 ? "game" : "games"}${played ? ` (${played} played)` : ""}${inc.archives.length ? `, ${inc.archives.length} past ${inc.archives.length === 1 ? "season" : "seasons"}` : ""}. When either of you shares again, the other phone gets the changes.</p>
+      <p class="hint">Another coach shared this team: ${roster(inc).length} ${roster(inc).length === 1 ? "player" : "players"}, ${inc.games.length} ${inc.games.length === 1 ? "game" : "games"}${played ? ` (${played} played)` : ""}${inc.archives.length ? `, ${inc.archives.length} past ${inc.archives.length === 1 ? "season" : "seasons"}` : ""}. When either of you shares again, the other phone gets the changes.</p>
       ${part}
       <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
         <button class="btn primary" type="button" data-d="ok">Add team</button></div>`, {
@@ -3249,7 +3261,7 @@ function markPlayed(t, g) {
   g.played = true;
   const inLineup = planPlayers(t, g);
   inLineup.forEach((p) => { g.names[p.id] = p.name; });
-  g.absent = t.players.filter((p) => !inLineup.includes(p)).map((p) => p.id);
+  g.absent = roster(t).filter((p) => !inLineup.includes(p)).map((p) => p.id);
   g.absent.forEach((id) => { g.names[id] = t.players.find((p) => p.id === id).name; });
 }
 
