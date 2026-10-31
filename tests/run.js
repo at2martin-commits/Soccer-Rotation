@@ -319,7 +319,7 @@ async function flowTests(browser, scheme) {
   // Team tab: settings, sharing, backup, delete.
   await p.click("#tab-team");
   const teamTab = await p.textContent("main");
-  check(["U12 Blaze", "9v9", "Stick to positions", "Share with other coaches", "Back up or move data", "Delete U12 Blaze"].every((x) => teamTab.includes(x)) &&
+  check(["Edit team", "Share with other coaches", "Back up or move data", "Delete U12 Blaze"].every((x) => teamTab.includes(x)) &&
     (await p.$$("nav.tabs [data-tab]")).length === 4 && (await p.getAttribute("#tab-team", "aria-selected")) === "true", "4th tab: team settings, sharing, backup and delete");
   check(!(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "Team tab: no sideways scrolling");
   await p.click('[data-action="delete-team"]');

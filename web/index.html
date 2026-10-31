@@ -1518,13 +1518,9 @@ function render() {
 }
 
 // The Team tab: this team's settings, sharing with other coaches, backups, and deleting the team.
+// The team's name and size are already at the top of the screen, so the tab is just the buttons.
 function teamView(t) {
-  const size = sizeOf(t.formation) + (hasGoalie(t.formation) ? "" : ", no goalie");
   return `
-    <section class="panel">
-      <h2>${esc(t.name)}</h2>
-      <p class="hint">${esc(size)} · ${esc(FORMATS[t.format].label)} · ${esc(STYLES[teamStyle(t)].label)}</p>
-    </section>
     <div class="menu-list">
       <button class="btn" type="button" data-action="edit-team">${ICON.edit} Edit team</button>
       <button class="btn" type="button" data-action="coach-share">${ICON.qr} Share with other coaches</button>
