@@ -233,6 +233,12 @@ async function flowTests(browser, scheme) {
   await p.locator('[data-action="remove-opp-goal"]').last().click();
   check((await p.textContent('[data-action="opp-goal"][data-qi="1"] .goal')) === "⚽" && !(await p.$('[data-action="opp-goal"][data-qi="3"] .goal')),
     "opponent goals show a ⚽ on the Opponent button, like a kid's");
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await p.waitForTimeout(200);
+  const stuck = await p.evaluate(() => { const b = document.querySelector("main > .scoreboard").getBoundingClientRect(), h = document.querySelector("header.top").getBoundingClientRect();
+    return { top: b.top, headerBottom: h.bottom, scrolled: scrollY > 300 }; });
+  check(stuck.scrolled && stuck.top >= stuck.headerBottom && stuck.top - stuck.headerBottom < 12, "the score stays in view under the top bar at the bottom of a game", JSON.stringify(stuck));
+  await p.evaluate(() => window.scrollTo(0, 0));
   const sb = (await p.innerText(".scoreboard")).replace(/\s+/g, " ").trim();
   check(/U8 Thunder Away 1\s*–\s*1 Tigers Home/i.test(sb), "goals for both teams, bench can't score, remove works", sb);
   await p.click('[data-action="game-more"]'); await p.click('[data-d="share"]');

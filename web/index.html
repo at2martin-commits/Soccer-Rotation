@@ -198,6 +198,8 @@ select.field { appearance: auto; }
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px;
 }
+/* On a game (and the parent scorekeeper) the score stays in view under the top bar while scrolling. */
+main > .scoreboard { position: sticky; top: calc(var(--top-h, 64px) + 6px); z-index: 4; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); }
 .sb-team { min-width: 0; display: grid; }
 .sb-opp { text-align: right; }
 .sb-name { font-weight: 700; overflow-wrap: anywhere; line-height: 1.2; }
@@ -3523,6 +3525,10 @@ mainEl.addEventListener("contextmenu", (e) => { if (e.target.closest(".spot[data
 mainEl.addEventListener("click", (e) => {
   if (Date.now() < suppressClickUntil) { e.stopImmediatePropagation(); e.preventDefault(); }
 }, true);
+
+// The sticky score sits just under the top bar, whatever its height.
+const topBar = document.querySelector("header.top");
+new ResizeObserver(() => document.documentElement.style.setProperty("--top-h", topBar.offsetHeight + "px")).observe(topBar);
 
 stampChanges(true);
 readHash();
