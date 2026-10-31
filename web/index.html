@@ -192,7 +192,7 @@ select.field { appearance: auto; }
 .opp-goal {
   flex: 0 0 calc((100% - 16px) / 3); min-height: 54px; padding: 4px 6px; border-radius: 10px; border: 2px solid var(--line);
   background: var(--chip); color: var(--chip-ink); font: inherit; font-weight: 600;
-  display: grid; align-content: center; justify-items: center; touch-action: manipulation; cursor: pointer;
+  display: grid; align-content: center; justify-items: center; touch-action: manipulation; cursor: pointer; position: relative;
 }
 .scoreboard {
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
@@ -398,7 +398,7 @@ a.btn.primary { color: var(--accent-ink); }
 .sk-opp { padding: 0 10px 10px; }
 /* The other team's goal button: big and dark, so it can't be missed next to the white player boxes. */
 .btn.opp-big {
-  width: 100%; min-height: 64px; white-space: normal; text-align: center; font-size: 1.25rem;
+  width: 100%; min-height: 64px; white-space: normal; text-align: center; font-size: 1.25rem; position: relative;
   background: var(--ink); border-color: var(--ink); color: var(--bg);
 }
 .scan-video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: #000000; }
@@ -1636,6 +1636,9 @@ function gameView(t, g) {
 }
 
 /** The pitch cards for every period. `interactive` makes spots tappable (swaps, goals). */
+/** The ⚽ on a kid's spot (or the opponent's button) for goals scored that period. */
+const goalBadge = (n) => (n ? `<span class="goal" aria-label="${n} ${n === 1 ? "goal" : "goals"}">⚽${n > 1 ? n : ""}</span>` : "");
+
 function periodsHTML(g, names, byId, interactive) {
   let html = "";
   g.plan.forEach((q, qi) => {
@@ -1645,7 +1648,7 @@ function periodsHTML(g, names, byId, interactive) {
       const name = id != null ? names[id] : null;
       const liked = p && slot.startsWith("F:") && p.preferred.includes(slot.slice(2));
       const goals = id != null ? goalCount(g, id, qi) : 0;
-      const badge = goals ? `<span class="goal" aria-label="${goals} ${goals === 1 ? "goal" : "goals"}">⚽${goals > 1 ? goals : ""}</span>` : "";
+      const badge = goalBadge(goals);
       const inner = `${badge}<span class="pos">${label}${liked ? " ★" : ""}</span><span class="who">${name ? esc(name) : "—"}</span>`;
       const cls = `spot${name ? "" : " empty-spot"}`;
       return interactive
@@ -1668,7 +1671,7 @@ function periodsHTML(g, names, byId, interactive) {
       : `<p class="form-note">${esc(formationName(f))}</p>`;
     html += `<section class="panel period" aria-label="${esc(periodName(g.format, qi))}">
       <div class="period-head"><h2>${esc(periodName(g.format, qi))}</h2>
-        ${interactive ? `<button class="opp-goal" type="button" data-action="opp-goal" data-qi="${qi}" aria-label="Add opponent goal"><span class="pos">OPPONENT</span>+ Goal</button>` : ""}</div>
+        ${interactive ? `<button class="opp-goal" type="button" data-action="opp-goal" data-qi="${qi}" aria-label="Add opponent goal">${goalBadge(g.oppGoals.filter((x) => x.p === qi).length)}<span class="pos">OPPONENT</span>+ Goal</button>` : ""}</div>
       ${formRow}
       <div class="pitch${q.positions.GK == null ? " no-keeper" : ""}">${rows}</div>${bench}</section>`;
   });
@@ -2786,7 +2789,7 @@ function scorekeeperView() {
   const spot = (id, label) => {
     const p = byId[id];
     const goals = sk.goals.filter((x) => x.id === id && x.p === sk.period).length;
-    const badge = goals ? `<span class="goal" aria-label="${goals} ${goals === 1 ? "goal" : "goals"}">⚽${goals > 1 ? goals : ""}</span>` : "";
+    const badge = goalBadge(goals);
     return `<button type="button" class="spot sk-spot" data-action="sk-goal" data-id="${id}" aria-label="${esc(skName(p))}, ${label}">${badge}<span class="pos">${label}</span>
       ${p.number ? `<span class="num">#${esc(p.number)}</span>` : ""}<span class="who">${esc(p.name)}</span></button>`;
   };
@@ -2801,7 +2804,7 @@ function scorekeeperView() {
       `<button type="button" data-action="sk-period" data-qi="${i}" aria-pressed="${i === sk.period}" aria-label="${esc(periodName(sk.format, i))}">${periodShort(sk.format, i)}</button>`).join("")}</div>
     <section class="panel period" aria-label="${esc(periodName(sk.format, sk.period))}">
       <div class="period-head"><h2>${esc(periodName(sk.format, sk.period))}</h2></div>
-      <div class="sk-opp"><button class="btn opp-big" type="button" data-action="sk-opp">⚽ + ${esc(oppName(g))} goal</button></div>
+      <div class="sk-opp"><button class="btn opp-big" type="button" data-action="sk-opp">${goalBadge(sk.oppGoals.filter((x) => x.p === sk.period).length)}⚽ + ${esc(oppName(g))} goal</button></div>
       <div class="pitch${q.positions.GK == null ? " no-keeper" : ""}">${rows}</div>${bench}
     </section>
     ${goalsHTML(team, g, names, true)}

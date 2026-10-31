@@ -231,6 +231,8 @@ async function flowTests(browser, scheme) {
   await p.dblclick('[data-action="opp-goal"][data-qi="1"]'); await p.waitForTimeout(500);
   await p.dblclick('[data-action="opp-goal"][data-qi="3"]'); await p.waitForTimeout(500);
   await p.locator('[data-action="remove-opp-goal"]').last().click();
+  check((await p.textContent('[data-action="opp-goal"][data-qi="1"] .goal')) === "⚽" && !(await p.$('[data-action="opp-goal"][data-qi="3"] .goal')),
+    "opponent goals show a ⚽ on the Opponent button, like a kid's");
   const sb = (await p.innerText(".scoreboard")).replace(/\s+/g, " ").trim();
   check(/U8 Thunder Away 1\s*–\s*1 Tigers Home/i.test(sb), "goals for both teams, bench can't score, remove works", sb);
   await p.click('[data-action="game-more"]'); await p.click('[data-d="share"]');
@@ -428,6 +430,7 @@ async function scorekeeperTests(browser) {
   await pp.click('[data-action="sk-opp"]'); await pp.click('[data-d="cancel"]');
   await pp.click('[data-action="sk-opp"]'); await pp.click('[data-d="ok"]');
   await pp.locator('[data-action="remove-opp-goal"]').last().click();
+  check((await pp.textContent('[data-action="sk-opp"] .goal')) === "⚽", "scorekeeper: the other team's button shows a ⚽ for their goals this quarter");
   await pp.reload();
   check(/2\s*–\s*1/.test(await pp.innerText(".sb-score")) && (await pp.textContent(".period h2")) === "Quarter 3", "taps survive a reload", (await pp.innerText(".sb-score")).replace(/\s+/g, " "));
   check(!(await pp.evaluate(() => document.documentElement.scrollWidth > innerWidth)), "scorekeeper: no sideways scrolling");
