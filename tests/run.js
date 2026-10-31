@@ -762,6 +762,8 @@ async function safetyTests(browser) {
     "huge or repeated ids are replaced or dropped; new ids stay unique", JSON.stringify(tricky.ids));
   check(tricky.period === '{"positions":{"GK":7,"RD":8},"bench":[]}' && tricky.date > 2000 && tricky.renders, "a kid can't be in two spots at once; bad dates replaced; still draws", tricky.period);
   check(st.teams[0].games[0].home === "" && /^\d{4}-\d{2}-\d{2}$/.test(st.teams[0].games[0].date), "bad dates and home/away replaced");
+  const guests = await p.evaluate(() => normalize({ teams: [{ players: [{ id: 0, name: "G", guest: true }, { id: 5, name: "Fake", guest: true }, { id: 6, name: "K", guest: "yes" }] }] }).teams[0].players.map((x) => !!x.guest).join());
+  check(guests === "true,false,false", "only the guest's own id can be the guest player", guests);
   // Data from older versions upgrades.
   await p.evaluate(() => localStorage.setItem("soccer-rotation", JSON.stringify({ version: 2, nextId: 30, currentTeamId: 1, savedAt: 1, teams: [{ id: 1, name: "Old", formation: "SIX_2_3", format: "QUARTERS",
     players: [1, 2, 3, 4, 5, 6, 7].map((i) => ({ id: i + 1, name: "K" + i })), absent: [], planSaved: true,

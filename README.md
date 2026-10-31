@@ -1,6 +1,6 @@
 # Soccer Rotation
 
-A web app that builds fair playing-time lineups for youth soccer teams. Version 1.3.
+A web app that builds fair playing-time lineups for youth soccer teams. Version 1.4.
 
 **Open it on any phone:** https://at2martin-commits.github.io/Soccer-Rotation/
 Tap **Add to home screen** in the app to put it on your phone like an app; it then opens
@@ -36,7 +36,8 @@ how to move your teams over.)
   and only spots change. Press and hold a player, then drag them onto another spot in the
   same period to swap them. **More → Share lineup as text** sends it as text. Double-tap a player on the field
   to record a goal, and double-tap **Opponent + Goal** on a period when the other team scores;
-  the scoreboard keeps the running score. Remove a mistaken goal from the game's Goals list.
+  a ⚽ marks who scored in each period, and the scoreboard keeps the running score in view as you
+  scroll. Remove a mistaken goal from the game's Goals list.
 - **Parent scorekeeper**: once a game has a lineup, **More → Parent scorekeeper code** puts up a QR code. A parent
   points their phone's camera at it and gets the lineup with jersey numbers; they tap a kid
   when they score (and a button when the other team scores). At the end they tap **Game over**
