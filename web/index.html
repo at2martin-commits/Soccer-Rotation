@@ -297,6 +297,7 @@ dialog::backdrop { background: rgba(8, 14, 10, 0.55); }
 .dlg h2 { font-size: 1.4rem; }
 .dlg .lbl { font-weight: 700; font-size: 0.9rem; }
 .dlg .group { display: grid; gap: 6px; }
+.dlg .group[hidden] { display: none; }
 .choice { display: flex; align-items: center; gap: 10px; min-height: 40px; }
 .choice input { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; flex: none; }
 .choice-hint { display: block; color: var(--muted); font-size: 0.85rem; line-height: 1.3; }
@@ -482,6 +483,10 @@ const FORMATIONS = {
   SIX_2_3: { label: "6v6: 2 defense, 3 forward", hint: "Attacking", fill: ["GK", "LD", "RD", "CF", "LF", "RF"] },
   SIX_2_1_2: { label: "6v6: 2 defense, 1 mid, 2 forward", hint: "Balanced", fill: ["GK", "LD", "RD", "CM", "LF", "RF"] },
   SIX_3_2: { label: "6v6: 3 defense, 2 forward", hint: "Defensive, good for protecting a lead", fill: ["GK", "CD", "LD", "RD", "LF", "RF"] },
+  // Short-handed 6v6 (fewer than 6 kids): offered only then, on Make lineup.
+  SIX_SHORT_NO_GK: { label: "6v6 short: no goalie, 2 defense, 3 forward", hint: "Everyone on the field, nobody in goal", fill: ["LD", "RD", "CF", "LF", "RF"], short: true },
+  SIX_SHORT_1_3: { label: "6v6 short: 1 defense, 3 forward", hint: "Goalie plus 4: attacking", fill: ["GK", "CD", "CF", "LF", "RF"], short: true },
+  SIX_SHORT_2_2: { label: "6v6 short: 2 defense, 2 forward", hint: "Goalie plus 4: balanced", fill: ["GK", "LD", "RD", "LF", "RF"], short: true },
   SEVEN_2_3_1: { label: "7v7: 2 defense, 3 mid, 1 forward", hint: "Balanced", fill: ["GK", "LD", "RD", "CM", "CF", "LM", "RM"] },
   SEVEN_2_2_2: { label: "7v7: 2 defense, 2 mid, 2 forward", hint: "Attacking", fill: ["GK", "LD", "RD", "LM", "RM", "LF", "RF"] },
   SEVEN_3_2_1: { label: "7v7: 3 defense, 2 mid, 1 forward", hint: "Defensive, good for protecting a lead", fill: ["GK", "CD", "LD", "RD", "LM", "RM", "CF"] },
@@ -498,7 +503,10 @@ const FORMATIONS = {
 };
 const TEAM_SIZES = ["4v4", "6v6", "7v7", "9v9", "11v11"];
 const sizeOf = (f) => FORMATIONS[f].label.split(/[ :]/)[0];
-const sizeFormations = (size) => Object.keys(FORMATIONS).filter((f) => sizeOf(f) === size);
+/** A size's formations; `short` gives its short-handed ones instead. */
+const sizeFormations = (size, short = false) => Object.keys(FORMATIONS).filter((f) => sizeOf(f) === size && !!FORMATIONS[f].short === short);
+/** Formations a period can switch to: the same size, short-handed or not like the current one. */
+const formationChoices = (f) => sizeFormations(sizeOf(f), !!FORMATIONS[f].short);
 /** "3 defense, 3 mid, 2 forward", without the size. */
 const formationName = (f) => FORMATIONS[f].label.split(": ")[1];
 /** Every spot any formation of this size uses, so preferred positions cover them all. */
@@ -1667,7 +1675,7 @@ function periodsHTML(g, names, byId, interactive) {
       ? `<div class="bench"><span class="label">Sitting</span><div class="prow">${q.bench.map((_, i) => spot("B:" + i, "SITS")).join("")}</div></div>`
       : "";
     const f = periodFormation(g, q);
-    const pickable = interactive && sizeFormations(sizeOf(f)).length > 1;
+    const pickable = interactive && formationChoices(f).length > 1;
     const formRow = pickable
       ? `<button class="form-btn" type="button" data-action="period-formation" data-qi="${qi}" aria-label="Formation: ${esc(formationName(f))}. Tap to change">${esc(formationName(f))} <span aria-hidden="true">▾</span></button>`
       : `<p class="form-note">${esc(formationName(f))}</p>`;
@@ -1961,39 +1969,52 @@ function lineupDialog(t, g) {
   const kids = t.players.map((p) => `
     <label class="choice"><input type="checkbox" name="here" id="here-${p.id}" value="${p.id}" ${here(p) ? "checked" : ""}>
       <span>${p.number ? `<span class="jersey">#${esc(p.number)}</span>` : ""}${esc(p.name)}</span></label>`).join("");
-  const choices = sizeFormations(sizeOf(t.formation));
-  const forms = choices.length < 2 ? "" : choices.map((k) => `
-    <label class="choice"><input type="radio" name="formation" id="formation-${k}" value="${k}" ${k === t.formation ? "checked" : ""}>
-      <span>${esc(formationName(k))}${FORMATIONS[k].hint ? `<small class="choice-hint">${esc(FORMATIONS[k].hint)}</small>` : ""}</span></label>`).join("");
+  const radio = (name, k, checked) => `
+    <label class="choice"><input type="radio" name="${name}" id="${name}-${k}" value="${k}" ${checked ? "checked" : ""}>
+      <span>${esc(formationName(k))}${FORMATIONS[k].hint ? `<small class="choice-hint">${esc(FORMATIONS[k].hint)}</small>` : ""}</span></label>`;
+  const choices = sizeFormations(sizeOf(t.formation)), shorts = sizeFormations(sizeOf(t.formation), true);
+  const forms = choices.length < 2 ? "" : choices.map((k) => radio("formation", k, k === t.formation)).join("");
+  const full = FORMATIONS[t.formation].fill.length;
   const label = (n) => `${g.plan ? "Make new lineup" : "Make lineup"} (${n} here)`;
+  const short = (n) => shorts.length && n < full;
   openDialog(`<h2>Who's here today?</h2>
     <p class="hint">Uncheck anyone who's absent.${g.plan ? " A new lineup replaces any swaps you made." : ""}</p>
     <div class="here-list">${kids}</div>
-    ${forms ? `<div class="group"><span class="lbl">Formation</span>${forms}
+    ${forms ? `<div class="group" id="full-forms"><span class="lbl">Formation</span>${forms}
       <p class="hint">You can change it for any ${periodWord(t.format)} during the game.</p></div>` : ""}
+    ${shorts.length ? `<div class="group" id="short-forms" hidden><div class="warn">Not enough players for ${full} on the field. How do you want to play?</div>
+      ${shorts.map((k) => radio("short", k, false)).join("")}</div>` : ""}
     <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Cancel</button>
       <button class="btn primary" type="button" data-d="ok" id="lineup-ok">${esc(label(t.players.filter(here).length))}</button></div>`, {
     ok: () => {
       const ids = new Set([...dlg.querySelectorAll('input[name="here"]:checked')].map((x) => Number(x.value)));
       if (!ids.size) { toast("Check at least one player"); return; }
-      const picked = dlg.querySelector('input[name="formation"]:checked');
+      const shortPick = dlg.querySelector('input[name="short"]:checked');
+      if (short(ids.size) && !shortPick) { toast("Pick how to play short-handed"); dlg.querySelector("#short-forms").scrollIntoView({ block: "center" }); return; }
+      const picked = short(ids.size) ? shortPick : dlg.querySelector('input[name="formation"]:checked');
       const formation = picked ? picked.value : t.formation;
       t.absent = t.players.filter((p) => !ids.has(p.id)).map((p) => p.id);
       g.plan = generate(present(t), formation, FORMATS[t.format].periods, seasonTotals(t, g.id), teamStyle(t));
       g.formation = formation;
       g.format = t.format;
-      t.formation = formation; // offered first next game
+      if (!FORMATIONS[formation].short) t.formation = formation; // offered first next game
       closeDialog();
       commit();
     },
   });
-  dlg.querySelectorAll('input[name="here"]').forEach((x) => x.addEventListener("change", () => {
-    dlg.querySelector("#lineup-ok").textContent = label(dlg.querySelectorAll('input[name="here"]:checked').length);
-  }));
+  // Fewer kids than spots: the short-handed choices take the formation's place.
+  const update = () => {
+    const n = dlg.querySelectorAll('input[name="here"]:checked').length;
+    dlg.querySelector("#lineup-ok").textContent = label(n);
+    if (shorts.length) dlg.querySelector("#short-forms").hidden = !short(n);
+    if (forms) dlg.querySelector("#full-forms").hidden = !!short(n);
+  };
+  dlg.querySelectorAll('input[name="here"]').forEach((x) => x.addEventListener("change", update));
+  update();
 }
 
 function formationDialog(title, hint, current, okLabel, restLabel, onOk) {
-  const opts = sizeFormations(sizeOf(current)).map((k) => `
+  const opts = formationChoices(current).map((k) => `
     <label class="choice"><input type="radio" name="formation" id="formation-${k}" value="${k}" ${k === current ? "checked" : ""}>
       <span>${esc(formationName(k))}${FORMATIONS[k].hint ? `<small class="choice-hint">${esc(FORMATIONS[k].hint)}</small>` : ""}</span></label>`).join("");
   openDialog(`<h2>${esc(title)}</h2>

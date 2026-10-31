@@ -24,8 +24,10 @@ how to move your teams over.)
   that Google Calendar, Samsung Calendar, Apple Calendar or Outlook can import (games with a
   start time are an hour long; games without one are all-day).
 - **Lineups**: on game day, **Make lineup** asks who's here (everyone starts checked; uncheck
-  anyone absent) and which formation you're playing (each size has several,
-  from attacking to defensive, spelled out like "3 defense, 3 mid, 2 forward"). Each game's
+  anyone absent) and which formation you're playing (each size has several, from attacking to
+  defensive, spelled out like "3 defense, 3 mid, 2 forward"). A 6v6 team with fewer than 6 kids
+  gets a warning and picks how to play short: no goalie (2 defense, 3 forward), or a goalie plus
+  1 defense and 3 forward, or plus 2 defense and 2 forward. Each game's
   lineup covers every period at once. Play time is split as evenly as possible, nobody sits
   twice in a row, goalie turns are spread out, and kids move between positions. Each period
   can switch formation during the game: the same kids stay on the field and on the bench,

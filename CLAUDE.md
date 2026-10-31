@@ -189,6 +189,10 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
   else about a team (edit, share with coaches, calendar file, archive season, backup, home screen,
   delete) is on the **Team** tab
   (`teamView`, one plain list of buttons), the 4th tab at the bottom right.
+- Short-handed 6v6: when fewer kids are checked than the formation has spots, `lineupDialog` swaps
+  the formation choice for a warning and the `short: true` formations (`SIX_SHORT_NO_GK`, `SIX_SHORT_1_3`,
+  `SIX_SHORT_2_2`); one must be picked. `sizeFormations(size, short)` keeps them out of normal pickers;
+  `formationChoices(f)` lets a period switch among its own kind. A short formation never becomes `t.formation`.
 - Attendance is taken on game day: **Make lineup** opens `lineupDialog` (who's here, everyone
   checked by default, plus the formation when the size has a choice). The Players tab has no
   attendance boxes, just the list and how to edit. `t.absent` is set from that dialog.

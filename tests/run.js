@@ -358,6 +358,29 @@ async function flowTests(browser, scheme) {
   const sample = await fresh.page.evaluate(() => ({ kids: team().players.length, games: team().games.map((g) => [g.date, g.opponent, g.home]), today: todayStr() }));
   check(sample.kids === 8 && sample.games.length >= 8 && sample.games.length <= 10 && sample.games.every((g) => g[0] > sample.today && g[1]),
     "sample names with sample games: 8 kids and 8–10 upcoming games", `${sample.kids} kids, ${sample.games.length} games`);
+  // Short-handed 6v6: fewer than 6 kids asks how to play.
+  const fp = fresh.page;
+  await fp.click("#tab-games"); await fp.click('[data-action="quick-game"]');
+  await fp.click('[data-action="make-lineup"]');
+  check(await fp.isHidden("#short-forms") && !(await fp.isHidden("#full-forms")), "enough kids: the usual formations, no short-handed choice");
+  const ids6 = await fp.evaluate(() => team().players.map((x) => x.id));
+  for (const id of ids6.slice(0, 3)) await fp.uncheck("#here-" + id);
+  check(!(await fp.isHidden("#short-forms")) && (await fp.isHidden("#full-forms")) && (await fp.$$('.dlg input[name="short"]')).length === 3 &&
+    (await fp.textContent("#short-forms")).includes("Not enough players"), "5 kids for 6v6: alert with no goalie, 1 defense 3 forward, 2 defense 2 forward");
+  await fp.click('[data-d="ok"]');
+  check(!(await fp.evaluate(() => currentGame(team()).plan)) && (await fp.textContent("#toast")).includes("short-handed"), "it waits for a choice");
+  await fp.check("#short-SIX_SHORT_1_3"); await fp.click('[data-d="ok"]');
+  const short13 = await fp.evaluate(() => ({ plan: currentGame(team()).plan, f: team().formation }));
+  check(short13.plan.every((q) => Object.keys(q.positions).sort().join() === "CD,CF,GK,LF,RF" && q.formation === "SIX_SHORT_1_3") && short13.f === "SIX_2_3",
+    "1 defense, 3 forward: goalie plus 4 every quarter; next game still offers the usual formation");
+  await fp.click('[data-action="period-formation"][data-qi="2"]');
+  check((await fp.$$eval('.dlg input[name="formation"]', (r) => r.map((x) => x.value))).join() === "SIX_SHORT_NO_GK,SIX_SHORT_1_3,SIX_SHORT_2_2", "a quarter can switch between the short-handed choices");
+  await fp.click('[data-d="cancel"]');
+  await fp.click('[data-action="make-lineup"]');
+  check((await fp.$$('.dlg input[name="here"]:checked')).length === 5 && !(await fp.isHidden("#short-forms")), "remaking starts from the same 5 kids");
+  await fp.check("#short-SIX_SHORT_NO_GK"); await fp.click('[data-d="ok"]');
+  const noGk = await fp.evaluate(() => currentGame(team()).plan);
+  check(noGk.every((q) => q.positions.GK == null && Object.keys(q.positions).length === 5), "no goalie: 5 on the field, nobody in goal");
   await fresh.ctx.close();
   check(!problems.length, "no page errors or blocked loads", problems.join(" | "));
   await ctx.close();
