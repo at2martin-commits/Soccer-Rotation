@@ -383,30 +383,20 @@ async function flowTests(browser, scheme) {
   check(noGk.every((q) => q.positions.GK == null && Object.keys(q.positions).length === 5), "no goalie: 5 on the field, nobody in goal");
   // A guest player borrowed from another team: only on Make lineup, absent unless checked.
   await fp.click('[data-action="make-lineup"]');
-  const guestRow = await fp.$eval(".here-list .guest-row", (l) => ({ last: l === [...document.querySelectorAll(".here-list .choice")].at(-1), text: l.textContent, checked: l.querySelector("input").checked, id: l.querySelector("input").value }));
-  check(guestRow.last && guestRow.text.includes("Guest player") && !guestRow.checked && guestRow.id === "0", "Make lineup lists a Guest player at the bottom, unchecked", JSON.stringify(guestRow));
-  check(await fp.isHidden("#guest-name"), "no name box until the guest is checked");
+  const guestRow = await fp.$eval(".here-list .choice:last-child", (l) => ({ text: l.textContent, checked: l.querySelector("input").checked, id: l.querySelector("input").value }));
+  check(guestRow.text.includes("Guest player") && !guestRow.checked && guestRow.id === "0", "Make lineup lists a Guest player last, unchecked", JSON.stringify(guestRow));
   await fp.check("#here-0");
-  await fp.fill("#guest-name", "Sam <b>");
   check((await fp.isHidden("#short-forms")) && (await fp.textContent("#lineup-ok")).includes("6 here"), "checking the guest makes 6: no short-handed alert");
   await fp.click('[data-d="ok"]');
   const withGuest = await fp.evaluate(() => { const g = currentGame(team()); return { inPlan: planIds(g).includes(0), goalie: g.plan.some((q) => q.positions.GK === 0), spots: g.plan.every((q) => Object.keys(q.positions).length === 6) }; });
-  check(withGuest.inPlan && !withGuest.goalie && withGuest.spots && (await fp.textContent(".timeline")).includes("Sam <b>") && !(await fp.$(".timeline b")), "the guest plays (not in goal) and shows by the name typed in");
+  check(withGuest.inPlan && !withGuest.goalie && withGuest.spots && (await fp.textContent(".timeline")).includes("Guest player"), "the guest plays (not in goal) and shows in playing time");
   await fp.click('[data-action="mark-played"]'); await fp.click('[data-d="ok"]');
   const guestGame = await fp.evaluate(() => ({ absent: currentGame(team()).absent }));
   await fp.click("#tab-players");
   check(!(await fp.textContent(".roster")).includes("Guest") && (await fp.$$(".roster .player")).length === 8 && !guestGame.absent.includes(0), "the guest isn't on the Players tab or in the absences");
   await fp.click("#tab-season");
   check(!(await fp.textContent(".season")).includes("Guest"), "the guest isn't in season totals");
-  // Another game's guest is someone else; the first game keeps its guest's name.
-  const firstGame = await fp.evaluate(() => currentGame(team()).id);
-  await fp.evaluate(() => { const t = team(), g = { id: newItemId(t), date: addDays(todayStr(), 7), opponent: "Sharks", home: "", time: "", place: "", plan: null, formation: t.formation, format: t.format, played: false, names: {}, goals: [], oppGoals: [] };
-    t.games.push(g); ui.tab = "games"; ui.gameId = g.id; commit(); });
-  await fp.click('[data-action="make-lineup"]');
-  check((await fp.inputValue("#guest-name")) === "", "a new game's guest name starts empty");
-  await fp.check("#here-0"); await fp.click('[data-d="ok"]');
-  const names2 = await fp.evaluate((id) => { const t = team(); return [gameNames(t, currentGame(t))[0], gameNames(t, t.games.find((x) => x.id === id))[0]]; }, firstGame);
-  check(names2[0] === "Guest player" && names2[1] === "Sam <b>", "left empty it says Guest player; the earlier game still says Sam", names2.join(" / "));
+  await fp.click("#tab-games"); await fp.click('[data-action="quick-game"]').catch(() => {});
   await fresh.ctx.close();
   check(!problems.length, "no page errors or blocked loads", problems.join(" | "));
   await ctx.close();

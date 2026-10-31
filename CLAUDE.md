@@ -191,9 +191,7 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
   (`teamView`, one plain list of buttons), the 4th tab at the bottom right.
 - **Guest player** (a kid borrowed from another team): `GUEST_ID` 0, `guestPlayer()`, `guest: true`
   (kept by `normalize` only on id 0, so every coach's copy has the same one). Made on first use in
-  `lineupDialog`, listed last and unchecked there (absent by default), with an optional name box; the
-  name is that game's `g.names[GUEST_ID]` (`gameNames` prefers it), so each game's guest keeps its own
-  name. Never goalie; left out of the
+  `lineupDialog`, listed last and unchecked there (absent by default); never goalie; left out of the
   Players tab, season totals, absences and the missing-number note via `roster(t)`.
 - Short-handed 6v6: when fewer kids are checked than the formation has spots, `lineupDialog` swaps
   the formation choice for a warning and the `short: true` formations (`SIX_SHORT_NO_GK`, `SIX_SHORT_1_3`,
