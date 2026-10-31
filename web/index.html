@@ -1142,6 +1142,9 @@ function gameStamps(v) {
 }
 const isSyncId = (v) => typeof v === "string" && /^[0-9a-z]{10}$/.test(v);
 const SYNC_GONE_MAX = 500; // deleted ids remembered per shared team
+// The guest player's id. Every team has the same one, so two coaches' copies match. Defined here,
+// before saved data is first loaded, since loading checks it.
+const GUEST_ID = 0;
 function cleanPlan(plan) {
   if (!Array.isArray(plan) || !plan.length) return null;
   return plan.slice(0, 8).map((q) => {
@@ -1362,9 +1365,8 @@ async function initCloud() {
 
 const team = () => state.teams.find((t) => t.id === state.currentTeamId) || state.teams[0] || null;
 const present = (t) => t.players.filter((p) => !t.absent.includes(p.id));
-// A kid borrowed from another team for a game. Every team has the same one (id 0, so two coaches'
-// copies match); it's made on first use, shown only on Make lineup, and absent unless checked there.
-const GUEST_ID = 0;
+// A kid borrowed from another team for a game (GUEST_ID, with the saving helpers above). It's made
+// on first use, shown only on Make lineup, and absent unless checked there.
 const guestPlayer = () => ({ id: GUEST_ID, name: "Guest player", number: "", goalie: false, preferred: [], guest: true });
 /** The team's own kids, without the guest. */
 const roster = (t) => t.players.filter((p) => !p.guest);

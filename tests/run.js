@@ -396,6 +396,9 @@ async function flowTests(browser, scheme) {
   check(!(await fp.textContent(".roster")).includes("Guest") && (await fp.$$(".roster .player")).length === 8 && !guestGame.absent.includes(0), "the guest isn't on the Players tab or in the absences");
   await fp.click("#tab-season");
   check(!(await fp.textContent(".season")).includes("Guest"), "the guest isn't in season totals");
+  await fp.reload();
+  check((await fp.evaluate(() => team().players.some((x) => x.guest && x.id === 0))) && !!(await fp.$("main .game-row, main .roster, main .panel")),
+    "the app opens again with a guest saved (it used to stop, leaving a blank screen)");
   await fp.click("#tab-games"); await fp.click('[data-action="quick-game"]').catch(() => {});
   await fresh.ctx.close();
   check(!problems.length, "no page errors or blocked loads", problems.join(" | "));
