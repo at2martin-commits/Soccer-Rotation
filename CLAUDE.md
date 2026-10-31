@@ -46,6 +46,10 @@ asks for changes in plain words.
 4. Commit messages end with the attribution lines the session's system reminder gives.
 5. Explain results to Steven plainly and briefly: what changed, how to use it, anything to try
    on his phone. He prefers being shown how things work in practice over technical detail.
+6. **No screenshots** (Steven: they waste time, he checks the beta himself). Verify with
+   `node tests/run.js` and tell him what to look at on his phone.
+7. **Keep the app uncluttered.** Steven found it getting crowded as features were added. Prefer
+   fewer buttons and shorter hints; put a new feature where it's used instead of adding new boxes.
 
 ## What a cloud session can't do
 
