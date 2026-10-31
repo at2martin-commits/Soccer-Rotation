@@ -16,15 +16,12 @@ asks for changes in plain words.
 
 1. **All changes go on the `beta` branch.** Start with `git fetch origin && git checkout beta && git pull origin beta`.
    Never commit app changes to `main` directly.
-2. **Steven's rule (Oct 2026): don't push or run the full suite after every change**; it wastes his
-   session time. After a change: run only the test part that covers it (`node tests/run.js screens`,
-   `coaches`, `scorekeeper`, ...; add checks for new features) and commit. The session's stop hook
-   wants the checked-out branch pushed, so work on the session's own branch (checked out from `beta`)
-   and push that; it doesn't deploy. **Only when he says "push to beta"**: run the full
-   `node tests/run.js` (all checks must pass), then `git push origin HEAD:beta`. That push runs `.github/workflows/beta.yml`, which asks
-   `pages.yml` (on main) to rebuild; the beta link updates in about 2 minutes. Confirm with
-   `gh run list -R at2martin-commits/Soccer-Rotation -w pages.yml -L 1` (wait for `completed success`).
-   Then tell Steven what changed and to reload the beta link.
+2. **Steven's rule (Oct 2026): work straight on `beta`, push to `beta` after each change, but run
+   only the basic tests for what changed** (`node tests/run.js screens`, `coaches`, `scorekeeper`, ...;
+   add checks for new features). Don't use other branches; he keeps the repo to `main` and `beta`.
+   **The full `node tests/run.js` runs only when he says "push to main"** (step 3).
+   A beta push runs `.github/workflows/beta.yml`, which asks `pages.yml` (on main) to rebuild; the beta
+   link updates in about 2 minutes. Then tell Steven what changed and to reload the beta link.
 3. **Only when Steven says to merge** (e.g. "merge beta to main", "push it to main", "I'm happy with the beta"):
    - **Standard procedure before every merge to main (Steven's rule, always do it, no need to ask):**
      1. *Clean up the code*: remove leftovers, debug code, stale comments; keep the style of the
@@ -41,6 +38,9 @@ asks for changes in plain words.
      Tell Steven briefly what the checks found and fixed.
    - Bump `APP_VERSION` in `web/index.html` (1.1 → 1.2 for features, 1.1.1 for small fixes) and the
      "Version" line at the top of `README.md`; make sure the README feature list matches the app.
+   - Push `beta` first and **wait for its Pages run to finish** before pushing `main`: pushing both at
+     once makes the beta rebuild cancel main's own run, which GitHub shows as a failed check ("1/2")
+     even though the site deploys fine.
    - `git checkout main && git merge --ff-only beta && git push origin main`, then
      `git checkout beta && git merge main && git push origin beta` so both match.
    - Wait for the Pages deploy (command above).
