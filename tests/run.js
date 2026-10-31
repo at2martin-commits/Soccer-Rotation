@@ -257,6 +257,20 @@ async function flowTests(browser, scheme) {
     { played: true, goals: [{}, {}], oppGoals: [{}] }, { played: true, goals: [], oppGoals: [{}] },
     { played: true, goals: [{}], oppGoals: [{}] }, { played: false, goals: [{}], oppGoals: [] }]));
   check(mix.w === 1 && mix.l === 1 && mix.t === 1 && mix.gf === 3 && mix.ga === 3, "record: wins, losses, ties, goals; unplayed games skipped", JSON.stringify(mix));
+  // Calendar file for the schedule.
+  await p.click("#tab-team");
+  const [icsDl] = await Promise.all([p.waitForEvent("download"), p.click('[data-action="export-calendar"]')]);
+  const ics = fs.readFileSync(await icsDl.path(), "utf8");
+  const nGames = await p.evaluate(() => team().games.length);
+  check(icsDl.suggestedFilename() === "U8-Thunder-games.ics" && ics.startsWith("BEGIN:VCALENDAR\r\n") && ics.endsWith("END:VCALENDAR\r\n") &&
+    (ics.match(/BEGIN:VEVENT/g) || []).length === nGames && /SUMMARY:U8 Thunder vs Tigers \(Away\)/.test(ics) && /DESCRIPTION:Final: U8 Thunder 1 – 1 Tigers/.test(ics),
+    "Team tab saves the schedule as a calendar file", `${nGames} games`);
+  const icsBits = await p.evaluate(() => calendarFile({ id: 1, name: "T", players: [], games: [
+    { id: 5, date: "2026-09-12", time: "09:30", opponent: "A, B; C\\D\nE", place: "Field ".repeat(30), home: "home", played: false, goals: [], oppGoals: [] },
+    { id: 6, date: "2026-12-31", time: "", opponent: "", place: "", home: "", played: false, goals: [], oppGoals: [] }] }).split("\r\n"));
+  check(icsBits.includes("SUMMARY:T vs A\\, B\\; C\\\\D\\nE (Home)") && icsBits.includes("DTSTART:20260912T093000") && icsBits.includes("DTEND:20260912T103000") &&
+    icsBits.includes("DTSTART;VALUE=DATE:20261231") && icsBits.includes("DTEND;VALUE=DATE:20270101") && icsBits.includes("SUMMARY:T game") &&
+    icsBits.every((l) => l.length <= 75) && icsBits.some((l) => l.startsWith(" ")), "calendar text escaped, times and all-day games right, long lines folded", icsBits.slice(0, 12).join(" | "));
   await p.click('[data-action="archive-season"]'); await p.click('[data-d="ok"]');
   check(!(await p.$$(".record")).length, "new season starts with no record");
   check((await p.textContent('[data-action="open-archive"]')).includes("0–0–1"), "past season row shows its record");
@@ -880,6 +894,7 @@ async function importTests(browser) {
   const bad = await p.getAttribute("#cal-get", "href");
   check(href === "https://calendar.bluesombrero.com/abc/team.ics" && bad === null, "webcal link becomes a download link; other links refused", String(href));
   await p.setInputFiles("#cal-file", { name: "Not a calendar.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
+  await p.waitForFunction(() => /isn't a calendar/.test(document.querySelector("#cal-msg").textContent), null, { timeout: 5000 }).catch(() => {});
   check((await p.textContent("#cal-msg")).includes("isn't a calendar"), "a wrong file gets a plain message");
   // Blue Sombrero's download often has no .ics ending, so the picker must not filter by type.
   check(!(await p.getAttribute("#cal-file", "accept")), "file picker lets any file be chosen (Android greys out unmatched files)");

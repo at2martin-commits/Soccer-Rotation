@@ -1525,6 +1525,8 @@ function teamView(t) {
       <button class="btn" type="button" data-action="edit-team">${ICON.edit} Edit team</button>
       <button class="btn" type="button" data-action="coach-share">${ICON.qr} Share with other coaches</button>
       <button class="btn" type="button" data-action="coach-get">${ICON.scan} Get update from a coach</button>
+      <button class="btn" type="button" data-action="export-calendar" ${t.games.length ? "" : "disabled"}>${ICON.download} Add games to your calendar (.ics)</button>
+      <button class="btn" type="button" data-action="archive-season" ${t.games.some((g) => g.played) || Object.keys(t.seasonCarry).length ? "" : "disabled"}>Archive season and start a new one</button>
       <button class="btn" type="button" data-action="backup">${ICON.download} Back up or move data</button>
       ${canInstall() ? `<button class="btn" type="button" data-action="install">${ICON.plus} Add to home screen</button>` : ""}
       <button class="btn danger" type="button" data-action="delete-team">Delete ${esc(t.name)}</button>
@@ -1772,7 +1774,6 @@ function seasonView(t) {
       <p class="hint">${played} ${played === 1 ? "game" : "games"} played. Played and Sat count ${FORMATS[t.format].unit}.</p>
       ${totalsTable(rows, keeper)}
     </div>
-    <button class="btn" type="button" data-action="archive-season" ${played || Object.keys(t.seasonCarry).length ? "" : "disabled"}>Archive season and start a new one</button>
     ${past ? `<h3 class="section-title">Past seasons</h3><div class="game-list">${past}</div>` : ""}`;
 }
 
@@ -1840,7 +1841,7 @@ function archiveDialog(t) {
       forget(t, t.games.map((g) => g.id));
       t.games = [];
       t.seasonCarry = {};
-      ui.gameId = null;
+      ui = { tab: "season", gameId: null };
       closeDialog();
       commit();
       toast(name + " archived");
@@ -2052,6 +2053,47 @@ function gameDialog(t, g) {
       closeDialog();
     }
   }
+}
+
+// ------------------------------------------------------------------ Calendar export
+// The schedule as a calendar file (.ics) that Google Calendar, Samsung Calendar, Apple Calendar or
+// Outlook can import. Games with a start time last an hour; games without one are all-day events.
+// Each game keeps the same id (UID), so importing again updates calendars that support it.
+
+const GAME_MINUTES = 60;
+function calendarFile(t) {
+  const icsText = (v) => String(v).replace(/[\\;,]/g, (c) => "\\" + c).replace(/\r?\n/g, "\\n");
+  // Long lines continue on the next line after a space (the format's limit is 75 bytes).
+  const fold = (line) => {
+    const chars = Array.from(line), out = [];
+    for (let i = 0; i < chars.length; i += 60) out.push((i ? " " : "") + chars.slice(i, i + 60).join(""));
+    return out.join("\r\n");
+  };
+  const stamp = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const local = (d) => dateStr(d).replace(/-/g, "") + "T" + pad(d.getHours()) + pad(d.getMinutes()) + "00";
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Soccer Rotation//EN", "CALSCALE:GREGORIAN", "X-WR-CALNAME:" + icsText(t.name)];
+  t.games.slice().sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)).forEach((g) => {
+    const side = g.home ? " (" + SIDES[g.home] + ")" : "";
+    lines.push("BEGIN:VEVENT", "UID:" + (t.sync || "team" + t.id) + "-" + g.id + "@soccer-rotation", "DTSTAMP:" + stamp(new Date()),
+      "SUMMARY:" + icsText(t.name + (g.opponent ? " vs " + g.opponent : " game") + side));
+    if (g.time) {
+      const [h, m] = g.time.split(":").map(Number), start = toDate(g.date);
+      start.setHours(h, m);
+      lines.push("DTSTART:" + local(start), "DTEND:" + local(new Date(start.getTime() + GAME_MINUTES * 60000)));
+    } else {
+      lines.push("DTSTART;VALUE=DATE:" + g.date.replace(/-/g, ""), "DTEND;VALUE=DATE:" + addDays(g.date, 1).replace(/-/g, ""));
+    }
+    if (g.place) lines.push("LOCATION:" + icsText(g.place));
+    if (g.played) lines.push("DESCRIPTION:" + icsText("Final: " + scoreLine(t, g)));
+    lines.push("END:VEVENT");
+  });
+  lines.push("END:VCALENDAR");
+  return lines.map(fold).join("\r\n") + "\r\n";
+}
+async function exportCalendar(t) {
+  if (!t.games.length) { toast("Add games on the Games tab first"); return; }
+  const ok = await saveFile(new Blob([calendarFile(t)], { type: "text/calendar" }), t.name.replace(/[^\w-]+/g, "-") + "-games.ics", "Calendar file");
+  if (!ok) toast("Couldn't save the calendar file");
 }
 
 // ------------------------------------------------------------------ Schedule import
@@ -2316,6 +2358,25 @@ function playerDialog(t, p) {
   syncGoalieChip();
 }
 
+/** Saves a file to the phone's downloads; false if it couldn't. */
+async function saveFile(blob, fileName, what) {
+  // Inside the claude.ai viewer, files are saved through its downloads prompt.
+  const dl = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads") : null;
+  if (dl) {
+    try { await dl.save({ filename: fileName, data: blob }); toast(what + " saved"); return true; }
+    catch (e) { return !!(e && e.code === "declined"); }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  toast(what + " downloaded");
+  return true;
+}
+
 function shareResultsDialog(t, g) {
   const d = reportData(t, g);
   const subject = reportSubject(d);
@@ -2344,21 +2405,7 @@ function shareResultsDialog(t, g) {
     },
     download: async () => {
       const blob = await pictureBlob();
-      // Inside the claude.ai viewer, files are saved through its downloads prompt.
-      const dl = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads") : null;
-      if (dl) {
-        try { await dl.save({ filename: fileName, data: blob }); toast("Picture saved"); }
-        catch (e) { if (!e || e.code !== "declined") showPicture(blob, "Press and hold the picture to save it."); }
-        return;
-      }
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = fileName;
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      toast("Picture downloaded");
+      if (!(await saveFile(blob, fileName, "Picture"))) showPicture(blob, "Press and hold the picture to save it.");
     },
   });
   function showPicture(blob, note) {
@@ -3194,6 +3241,9 @@ document.getElementById("main").addEventListener("click", async (e) => {
       break;
     case "backup":
       backupDialog();
+      break;
+    case "export-calendar":
+      exportCalendar(t);
       break;
     case "delete-team":
       if (b.dataset.armed) {
