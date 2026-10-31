@@ -411,8 +411,9 @@ async function scorekeeperTests(browser) {
   await pp.click('[data-action="sk-edit"]');
   check(!!(await pp.$('[data-action="sk-goal"]')), "parent can go back and fix the score");
   await pp.click('[data-action="sk-done"]');
-  await pp.click("#team-btn"); await pp.click('[data-d="close-sk"]');
-  check(!(await pp.isHidden("nav.tabs")) && !(await pp.evaluate(() => location.hash)), "close scorekeeper goes to the regular app");
+  await pp.click("#team-btn", { force: true });
+  check((await pp.isDisabled("#team-btn")) && (await pp.isHidden("#team-btn .caret")) && !(await pp.evaluate(() => dlg.open)) && (await pp.isHidden("nav.tabs")),
+    "a parent can't leave the scorekeeper for the team menu or tabs");
   check(!par.problems.length, "parent page: no errors", par.problems.join(" | "));
   await par.ctx.close();
   // Coach scans the parent's code (camera on, then the reader sees it).

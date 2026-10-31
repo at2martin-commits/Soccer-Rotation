@@ -120,7 +120,8 @@ asks for changes in plain words.
 6. **Parent scorekeeper** (its own section near the end, before Actions; `scorekeeperLink`/`readScorekeeper`, `scoreResultLink`/`readScoreResult`,
    `readHash`, `scorekeeperView`, `scanDialog`, `applyScoreDialog`): the coach's QR is a link
    `…#sk=<lineup>`; opening it shows the parent page (`sk` set, tabs hidden, taps kept under
-   `soccer-rotation-scorekeeper`, never touching the parent's own teams). "Game over" shows
+   `soccer-rotation-scorekeeper`, never touching the parent's own teams; the team button is disabled there,
+   so a parent can't get into the app's teams or tabs). "Game over" shows
    `…#skr=<score>`; the coach scans it (BarcodeDetector + camera, Chrome on Android), opens it
    with the phone's camera app, or pastes it. Applying replaces the game's goals and marks it played.
    Codes are untrusted: every field is checked like a backup.

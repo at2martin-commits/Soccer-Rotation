@@ -91,6 +91,8 @@ header.top .wrap { display: flex; align-items: center; gap: 12px; padding-block:
 }
 .team-btn .sub { font-size: 0.85rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .team-btn .caret { flex: none; width: 22px; height: 22px; color: var(--muted); }
+.team-btn:disabled { color: inherit; opacity: 1; cursor: default; }
+.team-btn:disabled .caret { display: none; }
 .sync { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
 .info-btn { margin-right: -10px; color: var(--muted); }
 .info-btn svg { width: 24px; height: 24px; }
@@ -1478,7 +1480,9 @@ async function addToHomeScreen() {
 }
 
 function render() {
+  // A parent keeping score stays on the scorekeeper page: no tabs, and no way into the team menu.
   document.querySelector("nav.tabs").hidden = !!sk;
+  document.getElementById("team-btn").disabled = !!sk;
   if (sk) {
     document.getElementById("team-name").textContent = "Scorekeeper";
     document.getElementById("team-sub").textContent = sk.team + (sk.opponent ? " vs " + sk.opponent : "") + " · " + toDate(sk.date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -2734,19 +2738,6 @@ function scorekeeperView() {
     ${goalsHTML(team, g, names, true)}
     <button class="btn primary full" type="button" data-action="sk-done">${ICON.check} Game over: show code for coach</button>`;
 }
-function scorekeeperMenu() {
-  openDialog(`<h2>Scorekeeper</h2>
-    <p class="hint">You're keeping score for ${esc(sk.team)}${sk.opponent ? " vs " + esc(sk.opponent) : ""} on ${esc(longDate(sk.date))}. Your taps are saved on this phone.</p>
-    <div class="dlg-actions"><button class="btn" type="button" data-d="close-sk">Close scorekeeper</button>
-      <button class="btn primary" type="button" data-d="cancel">Keep scoring</button></div>`, {
-    "close-sk": () => {
-      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-      sk = null;
-      closeDialog();
-      render();
-    },
-  });
-}
 function scorekeeperClick(b) {
   switch (b.dataset.action) {
     case "sk-period":
@@ -3107,7 +3098,7 @@ function fillSampleTeam(t) {
 }
 
 document.getElementById("about-btn").addEventListener("click", aboutDialog);
-document.getElementById("team-btn").addEventListener("click", () => (sk ? scorekeeperMenu() : state.teams.length ? teamMenu() : teamDialog(null)));
+document.getElementById("team-btn").addEventListener("click", () => (sk ? null : state.teams.length ? teamMenu() : teamDialog(null)));
 document.querySelectorAll("nav.tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
   // Tapping Games while already there goes back to the list.
   if (b.dataset.tab === "games" && ui.tab === "games") ui.gameId = null;
