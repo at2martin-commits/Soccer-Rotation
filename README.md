@@ -26,13 +26,13 @@ how to move your teams over.)
   twice in a row, goalie turns are spread out, and kids move between positions. Each period
   can switch formation during the game: the same kids stay on the field and on the bench,
   and only spots change. Press and hold a player, then drag them onto another spot in the
-  same period to swap them. Share sends the lineup as text. Double-tap a player on the field
+  same period to swap them. **More → Share lineup as text** sends it as text. Double-tap a player on the field
   to record a goal, and double-tap **+ Opponent goal** on a period when the other team scores;
   the scoreboard keeps the running score. Remove a mistaken goal from the game's Goals list.
-- **Parent scorekeeper**: once a game has a lineup, **Show code** puts up a QR code. A parent
+- **Parent scorekeeper**: once a game has a lineup, **More → Parent scorekeeper code** puts up a QR code. A parent
   points their phone's camera at it and gets the lineup with jersey numbers; they tap a kid
   when they score (and a button when the other team scores). At the end they tap **Game over**
-  and show a code back: tap **Scan score** and the score fills in and the game is marked
+  and show a code back: tap **More → Scan the parent's score** and the score fills in and the game is marked
   played. The codes carry everything (nothing goes through a server); if the camera can't be
   used, the parent can send the link instead and the coach pastes it.
 - **Other coaches**: keep a team the same on the head coach's and assistant coaches' phones.

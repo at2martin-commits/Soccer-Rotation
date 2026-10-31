@@ -6,7 +6,7 @@ an AI model made by Anthropic. It includes or uses the following open-source wor
 ## Material Icons (Google)
 
 The app's icons (edit, add, refresh, share, check, download, back, arrow, person, info,
-qr_code, qr_code_scanner, tune)
+qr_code, qr_code_scanner, tune, more_horiz)
 are SVG paths from or adapted from Google's Material Icons:
 https://github.com/google/material-design-icons
 

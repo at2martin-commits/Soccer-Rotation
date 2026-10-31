@@ -156,11 +156,12 @@ async function flowTests(browser, scheme) {
   await p.click('[data-action="install"]');
   check((await p.$$(".dlg .steps li")).length >= 2, "add to home screen shows the steps");
   await p.click('[data-d="cancel"]');
-  await p.click("text=Try it with sample names");
-  check(!!(await p.$(".install-card")), "card stays on the Players tab");
   await p.click('[data-action="install-later"]');
   await p.reload();
   check(!(await p.$(".install-card")), "Not now hides the card for good");
+  await p.evaluate(() => { try { localStorage.removeItem(INSTALL_HIDE_KEY); } catch (e) {} render(); });
+  await p.click("text=Try it with sample names");
+  check(!(await p.$(".install-card")), "the card shows only on the first screen, not once there's a team");
   await p.click("#tab-team");
   check(!!(await p.$('main [data-action="install"]')), "Team tab still has Add to home screen");
   await p.click("#team-btn");
@@ -225,7 +226,7 @@ async function flowTests(browser, scheme) {
   await p.locator('[data-action="remove-opp-goal"]').last().click();
   const sb = (await p.innerText(".scoreboard")).replace(/\s+/g, " ").trim();
   check(/U8 Thunder Away 1\s*–\s*1 Tigers Home/i.test(sb), "goals for both teams, bench can't score, remove works", sb);
-  await p.click('[data-action="share"]');
+  await p.click('[data-action="game-more"]'); await p.click('[data-d="share"]');
   const text = await p.evaluate(() => window.__shared && window.__shared.text);
   check(!!text && text.includes("Quarter 1") && text.includes("Score: U8 Thunder 1 – 1 Tigers"), "share lineup as text");
   // Played, summary, share and download.
@@ -360,9 +361,9 @@ async function scorekeeperTests(browser) {
   await p.click("#tab-games"); await p.click('[data-action="add-game"]');
   await p.fill("#game-date", "2026-09-12"); await p.fill("#game-opp", "Tigers-2 (A.~)"); await p.click("label:has(#side-home)"); await p.click('[data-d="save"]');
   await p.click('.game-row:has-text("Tigers")');
-  check(!(await p.$('[data-action="scorekeeper"]')), "no scorekeeper code before the lineup");
+  check(!(await p.$('[data-action="game-more"]')), "no scorekeeper code before the lineup");
   await p.click('[data-action="make-lineup"]'); await p.click('[data-d="ok"]');
-  await p.click('[data-action="scorekeeper"]');
+  await p.click('[data-action="game-more"]'); await p.click('[data-d="scorekeeper"]');
   check((await p.$$(".dlg .qr-box svg path")).length === 1 && (await p.textContent(".dlg")).includes("1 player has no jersey number"), "coach shows a QR code; notes kids without numbers");
   const link = await p.evaluate(() => { const t = team(); return scorekeeperLink(t, currentGame(t)); });
   const svgLink = await p.evaluate(() => { const t = team(); return qrSVG(scorekeeperLink(t, currentGame(t)), "Scorekeeper code for " + t.name); });
@@ -415,7 +416,7 @@ async function scorekeeperTests(browser) {
   check(!par.problems.length, "parent page: no errors", par.problems.join(" | "));
   await par.ctx.close();
   // Coach scans the parent's code (camera on, then the reader sees it).
-  await p.click('[data-action="scan-score"]');
+  await p.click('[data-action="game-more"]'); await p.click('[data-d="scan"]');
   await p.waitForFunction(() => { const v = document.querySelector("#scan-video"); return v && v.srcObject && !v.paused; }, null, { timeout: 5000 }).catch(() => {});
   check(await p.evaluate(() => !!(document.querySelector("#scan-video") && document.querySelector("#scan-video").srcObject)), "scan opens the camera");
   await p.evaluate((l) => { window.__qr = l; }, link);
@@ -439,7 +440,7 @@ async function scorekeeperTests(browser) {
   check((await p.evaluate(() => currentGame(team()).goals.length)) === 2, "score updated from the link");
   // Paste, wrong codes, unknown games.
   await p.evaluate(() => { const g = currentGame(team()); g.played = false; window.__qr = null; commit(); });
-  await p.click('[data-action="scan-score"]');
+  await p.click('[data-action="game-more"]'); await p.click('[data-d="scan"]');
   await p.fill("#scan-paste", "hello"); await p.click('[data-d="paste"]');
   check((await p.textContent("#scan-msg")).includes("isn't a score link"), "pasting something else says so");
   await p.fill("#scan-paste", "Final score " + result); await p.click('[data-d="paste"]');
@@ -523,9 +524,7 @@ async function coachTests(browser) {
   await a.click('.game-row:has-text("Sharks")'); await a.click('[data-action="edit-game"]');
   await a.click('[data-d="delete"]'); await a.click('[data-d="delete"]');
   // The assistant shows their code; the coach scans it.
-  await b.click('.game-row:has-text("Tigers")');
-  check((await b.$$('[data-action="coach-share"]')).length === 1, "a played game offers to send the update");
-  await b.click('[data-action="coach-share"]');
+  await b.click("#tab-team"); await b.click('[data-action="coach-share"]');
   await b.waitForSelector(".dlg .qr-box svg");
   const back = await b.evaluate(async () => (await syncLinks(team())).qr);
   await b.click('[data-d="cancel"]');
@@ -957,7 +956,7 @@ async function iphoneTests(browser) {
     const empty = await p.textContent(".dlg");
     await p.click('[data-d="cancel"]');
     await p.click("text=Try it with sample names");
-    await p.click('[data-action="install"]');
+    await p.click("#tab-team"); await p.click('[data-action="install"]');
     const full = await p.textContent(".dlg");
     const noteFirst = await p.evaluate(() => !!(document.querySelector(".dlg .ios-note").compareDocumentPosition(document.querySelector(".dlg .steps")) & Node.DOCUMENT_POSITION_FOLLOWING));
     check(empty.includes(want) && empty.includes("starts empty") && empty.includes("set up your team"), `iPhone ${label}: right steps, warns the app starts empty`);

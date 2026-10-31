@@ -381,7 +381,9 @@ a.btn.primary { color: var(--accent-ink); }
 /* Parent scorekeeper */
 .qr-box { justify-self: center; width: min(100%, 340px); background: #ffffff; border-radius: 10px; padding: 6px; }
 .qr-box svg { display: block; width: 100%; height: auto; }
-.sk-panel .btn-row > .btn { flex: 1; min-width: 0; padding: 0 10px; }
+.menu-list { display: grid; gap: 8px; }
+.menu-list .btn { justify-content: flex-start; }
+.menu-list .btn.danger { margin-top: 8px; }
 .sync-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; overflow-wrap: anywhere; }
 .sk-periods { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
 .sk-periods button {
@@ -1401,6 +1403,7 @@ function suggestSeasonName(t) {
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const ICON = {
+  more: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
@@ -1507,8 +1510,6 @@ function render() {
     main.innerHTML = g ? gameView(t, g) : gamesView(t);
   } else if (ui.tab === "team") main.innerHTML = teamView(t);
   else main.innerHTML = seasonView(t);
-  // Not inside an open game, to keep game day uncluttered.
-  if (!(ui.tab === "games" && currentGame(t))) main.insertAdjacentHTML("afterbegin", installCard());
 }
 
 // The Team tab: this team's settings, sharing with other coaches, backups, and deleting the team.
@@ -1518,26 +1519,15 @@ function teamView(t) {
     <section class="panel">
       <h2>${esc(t.name)}</h2>
       <p class="hint">${esc(size)} · ${esc(FORMATS[t.format].label)} · ${esc(STYLES[teamStyle(t)].label)}</p>
-      <button class="btn" type="button" data-action="edit-team">${ICON.edit} Edit name, size, game and positions</button>
     </section>
-    <section class="panel sk-panel"><h2>Share with other coaches</h2>
-      <p class="hint">Keep this team the same on every coach's phone: share after you set up the schedule, and after each game. Got a code or link from another coach? <strong>Get update</strong> adds their team or updates this one.</p>
-      <div class="btn-row">
-        <button class="btn grow" type="button" data-action="coach-share">${ICON.qr} Share</button>
-        <button class="btn grow" type="button" data-action="coach-get">${ICON.scan} Get update</button>
-      </div></section>
-    <section class="panel"><h2>Back up or move data</h2>
-      <p class="hint">Copy a backup of all your teams to keep it safe, or to move them to another phone.</p>
-      <button class="btn" type="button" data-action="backup">Back up or move data</button>
-    </section>
-    ${canInstall() ? `<section class="panel"><h2>Home screen</h2>
-      <p class="hint">Put Soccer Rotation on your home screen so it opens like an app, even without internet.</p>
-      <button class="btn" type="button" data-action="install">${ICON.plus} Add to home screen</button>
-    </section>` : ""}
-    <section class="panel"><h2>Delete team</h2>
-      <p class="hint">Deletes ${esc(t.name)} from this phone: players, games and past seasons.${t.sync ? " Other coaches keep their copy." : ""}</p>
+    <div class="menu-list">
+      <button class="btn" type="button" data-action="edit-team">${ICON.edit} Edit team</button>
+      <button class="btn" type="button" data-action="coach-share">${ICON.qr} Share with other coaches</button>
+      <button class="btn" type="button" data-action="coach-get">${ICON.scan} Get update from a coach</button>
+      <button class="btn" type="button" data-action="backup">${ICON.download} Back up or move data</button>
+      ${canInstall() ? `<button class="btn" type="button" data-action="install">${ICON.plus} Add to home screen</button>` : ""}
       <button class="btn danger" type="button" data-action="delete-team">Delete ${esc(t.name)}</button>
-    </section>`;
+    </div>`;
 }
 
 function playersView(t) {
@@ -1558,7 +1548,7 @@ function playersView(t) {
   return `
     <div class="panel">
       <div><span class="count">${present(t).length} of ${t.players.length} here today</span></div>
-      <p class="hint">Uncheck kids who are absent. Tap a name to rename them, add a jersey number${hasGoalie(t.formation) ? ", set preferred positions, or turn off goalie" : " or set preferred positions"}.</p>
+      <p class="hint">Uncheck kids who are absent. Tap a name to edit.</p>
     </div>
     <form class="add-row" data-form="add-player">
       <input class="field" id="add-name" name="name" placeholder="Add a player" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="New player name">
@@ -1602,7 +1592,7 @@ function gamesView(t) {
   if (!games.length) {
     return html + `<div class="panel empty">
       <h2>Add your schedule</h2>
-      <p class="hint">Enter the dates from your team's schedule. On game day, open the game to make its lineup. Past games keep their lineups so you can look back.</p>
+      <p class="hint">Add the dates from your schedule. On game day, open the game to make its lineup.</p>
     </div>`;
   }
   if (upcoming.length) html += `<h3 class="section-title">Coming up</h3><div class="game-list">${upcoming.map(row).join("")}</div>`;
@@ -1627,30 +1617,23 @@ function gameView(t, g) {
   if (!g.played) {
     html += `<div class="btn-row">
       <button class="btn primary grow" type="button" data-action="make-lineup" ${here.length ? "" : "disabled"}>${ICON.refresh} ${plan ? "New lineup" : "Make lineup"}</button>
-      ${plan ? `<button class="btn" type="button" data-action="share">${ICON.share} Share</button>` : ""}
+      ${plan ? `<button class="btn" type="button" data-action="game-more" aria-label="More: share lineup, parent scorekeeper">${ICON.more} More</button>` : ""}
     </div>`;
-    if (plan) html += `<button class="btn full" type="button" data-action="mark-played" ${changed ? "disabled" : ""}>${ICON.check} Mark as played</button>
-      <section class="panel sk-panel"><h2>Parent scorekeeper</h2>
-        <p class="hint">A parent scans your code to keep score from the sideline. After the game, scan theirs to fill in the score.</p>
-        <div class="btn-row">
-          <button class="btn grow" type="button" data-action="scorekeeper">${ICON.qr} Show code</button>
-          <button class="btn grow" type="button" data-action="scan-score">${ICON.scan} Scan score</button>
-        </div></section>`;
+    if (plan) html += `<button class="btn full" type="button" data-action="mark-played" ${changed ? "disabled" : ""}>${ICON.check} Mark as played</button>`;
   } else {
     html += `<div class="btn-row">
       <span class="played-note grow">${ICON.check} Played</span>
       <button class="btn primary" type="button" data-action="share-results">${ICON.share} Share results</button>
-    </div>
-    <button class="btn full" type="button" data-action="coach-share">${ICON.qr} Send update to other coaches</button>`;
+    </div>`;
   }
 
   if (!plan) {
     return html + `<p class="hint">${t.players.length
-      ? `${here.length} of ${t.players.length} players are checked in on the Players tab. The lineup uses them, so update attendance first if needed.`
+      ? `Uses the ${here.length} of ${t.players.length} kids checked in on the Players tab.`
       : "Add your players on the Players tab first."}</p>`;
   }
   if (changed) html += `<div class="warn">Attendance changed since this lineup was made. Tap New lineup to include the right kids.</div>`;
-  html += `<p class="hint">Press and hold a player, then drag them onto another spot in the same box to swap. Double-tap a player on the field to add a goal; double-tap <strong>+ ${esc(oppName(g))} goal</strong> when they score.${g.played ? " Changes update the season totals." : ""} ★ marks a preferred spot.</p>`;
+  html += `<p class="hint">Hold and drag to swap kids. Double-tap a kid, or <strong>+ ${esc(oppName(g))} goal</strong>, to add a goal. ★ = preferred spot.</p>`;
 
   const byId = Object.fromEntries(t.players.map((p) => [p.id, p]));
   const names = gameNames(t, g);
@@ -1725,12 +1708,11 @@ function goalsHTML(t, g, names, interactive) {
 }
 
 function playingTimeHTML(g, ids, names) {
-  const unit = FORMATS[g.format].unit;
   const rows = summarize(g.plan, ids.map((id) => ({ id }))).map((x) => `
     <tr><td class="nm">${esc(names[x.id] || "—")}${goalCount(g, x.id) ? ` <span class="goal-inline">⚽${goalCount(g, x.id) > 1 ? goalCount(g, x.id) : ""}</span>` : ""}</td>
     <td class="seq">${x.positions.map((k) => (k ? `<span class="tag">${POS[k].short}</span>` : `<span class="tag sat">–</span>`)).join("")}</td>
     <td class="tot">${x.played}/${g.plan.length}</td></tr>`).join("");
-  return `<section class="panel"><h2>Playing time</h2><p class="hint">Positions by ${unit === "halves" ? "half" : unit === "quarters" ? "quarter" : "segment"}, and ${unit} played.</p>
+  return `<section class="panel"><h2>Playing time</h2>
     <table class="timeline"><tbody>${rows}</tbody></table></section>`;
 }
 
@@ -1760,7 +1742,7 @@ function recordHTML(games) {
   const box = (n, label) => `<div class="rec"><span class="rec-n">${n}</span><span class="rec-l">${label}</span></div>`;
   return `<div class="panel"><h2>Record</h2>
     <div class="record">${box(r.w, r.w === 1 ? "Win" : "Wins")}${box(r.l, r.l === 1 ? "Loss" : "Losses")}${box(r.t, r.t === 1 ? "Tie" : "Ties")}</div>
-    <p class="hint">Goals ${r.gf} for, ${r.ga} against. Counts games marked played, from the goals entered for each.</p></div>`;
+    <p class="hint">Goals ${r.gf} for, ${r.ga} against.</p></div>`;
 }
 
 function seasonView(t) {
@@ -1786,7 +1768,7 @@ function seasonView(t) {
     ${recordHTML(t.games)}
     <div class="panel">
       <h2>Season totals</h2>
-      <p class="hint">${played} ${played === 1 ? "game" : "games"} marked played for ${esc(t.name)}. New lineups give extra time to kids who've sat more${keeper ? ", and spread goalie turns" : ""}. Played and Sat count ${FORMATS[t.format].unit}. Goals count every game.</p>
+      <p class="hint">${played} ${played === 1 ? "game" : "games"} played. Played and Sat count ${FORMATS[t.format].unit}.</p>
       ${totalsTable(rows, keeper)}
     </div>
     <button class="btn" type="button" data-action="archive-season" ${played || Object.keys(t.seasonCarry).length ? "" : "disabled"}>Archive season and start a new one</button>
@@ -2592,7 +2574,7 @@ function scorekeeperDialog(t, g) {
   if (!svg) { toast("This lineup is too big for a code"); return; }
   const missing = planPlayers(t, g).filter((p) => !p.number).length;
   openDialog(`<h2>Parent scorekeeper</h2>
-    <p class="hint">A parent points their phone's camera at this code and opens the link. They get this lineup with jersey numbers and tap goals for each kid and for ${esc(oppName(g))}. After the game they show you a code: tap <strong>Scan score</strong> to add it here.</p>
+    <p class="hint">A parent points their phone's camera at this code and opens the link. They get this lineup with jersey numbers and tap goals for each kid and for ${esc(oppName(g))}. After the game they show you a code: tap <strong>More</strong>, then <strong>Scan the parent's score</strong>.</p>
     <div class="qr-box">${svg}</div>
     ${missing ? `<p class="hint">${missing} ${missing === 1 ? "player has" : "players have"} no jersey number. Add numbers on the Players tab: tap a name.</p>` : ""}
     <p class="hint">Changed the lineup after they scanned? Show the code again.</p>
@@ -2677,7 +2659,7 @@ function applyScoreDialog(r) {
   const g = t && t.games.find((x) => x.id === r.gameId);
   if (!g || !g.plan) {
     openDialog(`<h2>Game not found</h2>
-      <p class="hint">This score is for a game that isn't in this app. Scan it with the Soccer Rotation that showed the scorekeeper code. On iPhone the home screen app keeps its own games: open it and paste the parent's link under <strong>Scan score</strong>.</p>
+      <p class="hint">This score is for a game that isn't in this app. Scan it with the Soccer Rotation that showed the scorekeeper code. On iPhone the home screen app keeps its own games: open it and paste the parent's link under <strong>Scan the parent's score</strong>.</p>
       <div class="dlg-actions"><button class="btn primary" type="button" data-d="cancel">OK</button></div>`);
     return;
   }
@@ -2718,7 +2700,7 @@ function scorekeeperView() {
     return `${scoreboardHTML(team, g)}
       <section class="panel">
         <h2>Show this to the coach</h2>
-        <p class="hint">The coach taps <strong>Scan score</strong> in Soccer Rotation (or points their phone's camera here) and the score fills in.</p>
+        <p class="hint">The coach scans it in Soccer Rotation (or points their phone's camera here) and the score fills in.</p>
         <div class="qr-box">${qrSVG(scoreResultLink(), "Score code for the coach")}</div>
         <div class="btn-row">
           <button class="btn grow" type="button" data-action="sk-send">${ICON.share} Send instead</button>
@@ -3188,6 +3170,14 @@ function markPlayed(t, g) {
   g.absent.forEach((id) => { g.names[id] = t.players.find((p) => p.id === id).name; });
 }
 
+async function shareLineup(t, g) {
+  const text = lineupText(t, g);
+  if (navigator.share) {
+    try { await navigator.share({ text }); return; } catch (err) { if (err && err.name === "AbortError") return; }
+  }
+  textDialog("Share lineup", text);
+}
+
 function openGame(id) {
   ui.gameId = id;
   render();
@@ -3299,14 +3289,19 @@ document.getElementById("main").addEventListener("click", async (e) => {
         });
       break;
     }
-    case "share": {
-      const text = lineupText(t, g);
-      if (navigator.share) {
-        try { await navigator.share({ text }); return; } catch (err) { if (err && err.name === "AbortError") return; }
-      }
-      textDialog("Share lineup", text);
+    case "game-more":
+      openDialog(`<h2>More</h2>
+        <div class="menu-list">
+          <button class="btn" type="button" data-d="share">${ICON.share} Share lineup as text</button>
+          <button class="btn" type="button" data-d="scorekeeper">${ICON.qr} Parent scorekeeper code</button>
+          <button class="btn" type="button" data-d="scan">${ICON.scan} Scan the parent's score</button>
+        </div>
+        <div class="dlg-actions"><button class="btn" type="button" data-d="cancel">Close</button></div>`, {
+        share: () => { closeDialog(); shareLineup(t, g); },
+        scorekeeper: () => scorekeeperDialog(t, g),
+        scan: () => scanDialog(),
+      });
       break;
-    }
     case "mark-played":
       confirmDialog("Mark this game as played?", "It's added to the season totals, so future lineups give more time to kids who've sat more.", "Mark as played", () => {
         markPlayed(t, g);
@@ -3316,12 +3311,6 @@ document.getElementById("main").addEventListener("click", async (e) => {
       break;
     case "share-results":
       shareResultsDialog(t, g);
-      break;
-    case "scorekeeper":
-      scorekeeperDialog(t, g);
-      break;
-    case "scan-score":
-      scanDialog();
       break;
     case "coach-share":
       coachShareDialog(t);

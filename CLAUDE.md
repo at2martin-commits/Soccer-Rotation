@@ -70,7 +70,8 @@ asks for changes in plain words.
   network-first offline helper (regular and beta install as separate apps). In the app, the
   "Put Soccer Rotation on your home screen" card (`installCard`, `addToHomeScreen`) shows only when a
   manifest is linked and the app isn't already open from its icon; it uses Chrome's install prompt or
-  shows step-by-step help. "Not now" hides the card on that device; the team menu keeps the button. `--beta` adds the BETA tag,
+  shows step-by-step help. The card shows only on the first screen (no team yet); "Not now" hides it
+  on that device; the Team tab keeps the button. `--beta` adds the BETA tag,
   "beta" version label and a separate storage key (`soccer-rotation-beta`). The app checks that key
   (`IS_BETA`) to show beta-only tools: the "fill with sample players and an 8–10 game schedule" switch
   on New team (`fillSampleTeam`).
@@ -181,7 +182,10 @@ archives: [{id, name, archivedAt, games, carry, names}]}]}`.
 
 - The team name at the top left (`teamMenu`) only switches teams and makes a new one. Everything
   else about a team (edit, share with coaches, backup, home screen, delete) is on the **Team** tab
-  (`teamView`), the 4th tab at the bottom right.
+  (`teamView`, one plain list of buttons), the 4th tab at the bottom right.
+- The game screen keeps two main buttons (Make lineup, Mark as played); Share lineup, Parent
+  scorekeeper code and Scan the parent's score sit behind **More** (`game-more`). Hints are one short
+  line. Sharing with coaches lives only on the Team tab.
 - A server for syncing (Firebase / Google Drive) was offered; Steven said never mind. Sharing stays
   QR codes and links, with nothing sent to a server.
 
