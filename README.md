@@ -40,7 +40,7 @@ how to move your teams over.)
   played. The codes carry everything (nothing goes through a server); if the camera can't be
   used, the parent can send the link instead and the coach pastes it.
 - **Other coaches**: keep a team the same on the head coach's and assistant coaches' phones.
-  On the Team tab, **Share** shows a QR code and **Send link** sends
+  On the Team tab, **Share with other coaches** shows a QR code and **Send link** sends
   the team by text or email: players, schedule, lineups, goals, season totals and past seasons.
   The other coach scans the code or opens the link and gets the team. After that, whoever
   changed something shares again and the other phone shows what's new before updating: new and

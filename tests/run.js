@@ -989,7 +989,7 @@ async function iphoneTests(browser) {
 }
 
 (async () => {
-  // A fake camera, so the scorekeeper's Scan score can open one.
+  // A fake camera, so scanning a parent's score or a coach's team can open one.
   const browser = await chromium.launch({ args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
   try {
     // `node tests/run.js fair` (or planner, screens, iphone, scorekeeper, coaches, import, safety) runs just that part.

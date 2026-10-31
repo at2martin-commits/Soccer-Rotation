@@ -1512,8 +1512,8 @@ function render() {
   else main.innerHTML = seasonView(t);
 }
 
-// The Team tab: this team's settings, sharing with other coaches, backups, and deleting the team.
-// The team's name and size are already at the top of the screen, so the tab is just the buttons.
+// The Team tab: everything about the team besides players and games, as one list of buttons. Its name
+// and size are already at the top of the screen.
 function teamView(t) {
   return `
     <div class="menu-list">
@@ -2333,7 +2333,7 @@ function playerDialog(t, p) {
       <p class="hint">${teamStyle(t) === "stick"
         ? "They'll play here whenever they're on the field (this team sticks to positions). Leave empty to keep them in whatever spot they start in."
         : "They'll play here more often, and other spots on the same line a bit more too, but still rotate so every kid gets turns at forward and defense. Leave empty to rotate evenly."}</p>
-      <div class="chips" id="pref-chips">${chips()}</div></div>
+      <div class="chips">${chips()}</div></div>
     <div class="dlg-actions">
       <button class="btn danger" type="button" data-d="remove" style="margin-right:auto">Remove from team</button>
       <button class="btn" type="button" data-d="cancel">Cancel</button>
