@@ -190,10 +190,11 @@ select.field { appearance: auto; }
 }
 .form-btn span { color: var(--muted); font-size: 0.8rem; }
 .form-note { margin: -6px 14px 10px; color: var(--muted); font-size: 0.9rem; }
+/* Looks and sizes like a kid's spot on the pitch: same height, about a third of the width. */
 .opp-goal {
-  min-height: 36px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
-  font-weight: 700; font-size: 0.85rem; color: var(--muted); white-space: nowrap; max-width: 60%; overflow: hidden; text-overflow: ellipsis;
-  touch-action: manipulation;
+  flex: 0 0 calc((100% - 16px) / 3); min-height: 54px; padding: 4px 6px; border-radius: 10px; border: 2px solid var(--line);
+  background: var(--chip); color: var(--chip-ink); font: inherit; font-weight: 600;
+  display: grid; align-content: center; justify-items: center; touch-action: manipulation; cursor: pointer;
 }
 .scoreboard {
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
@@ -238,7 +239,7 @@ select.field { appearance: auto; }
   background: var(--chip); color: var(--chip-ink); padding: 4px 6px;
   display: grid; align-content: center; justify-items: center; gap: 0;
 }
-.spot .pos { font-family: var(--font-display); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.06em; color: #4f6155; }
+.spot .pos, .opp-goal .pos { font-family: var(--font-display); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.06em; color: #4f6155; }
 .spot .who { font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spot.empty-spot .who { color: #8a968d; }
 .spot { position: relative; touch-action: manipulation; }
@@ -1637,7 +1638,7 @@ function gameView(t, g) {
       : "Add your players on the Players tab first."}</p>`;
   }
   if (changed) html += `<div class="warn">Attendance changed since this lineup was made. Tap New lineup to include the right kids.</div>`;
-  html += `<p class="hint">Hold and drag to swap kids. Double-tap a kid, or <strong>+ ${esc(oppName(g))} goal</strong>, to add a goal. ★ = preferred spot.</p>`;
+  html += `<p class="hint">Hold and drag to swap kids. Double-tap a kid, or <strong>Opponent + Goal</strong>, to add a goal. ★ = preferred spot.</p>`;
 
   const byId = Object.fromEntries(t.players.map((p) => [p.id, p]));
   const names = gameNames(t, g);
@@ -1683,7 +1684,7 @@ function periodsHTML(g, names, byId, interactive) {
       : `<p class="form-note">${esc(formationName(f))}</p>`;
     html += `<section class="panel period" aria-label="${esc(periodName(g.format, qi))}">
       <div class="period-head"><h2>${esc(periodName(g.format, qi))}</h2>
-        ${interactive ? `<button class="opp-goal" type="button" data-action="opp-goal" data-qi="${qi}">+ ${esc(oppName(g))} goal</button>` : ""}</div>
+        ${interactive ? `<button class="opp-goal" type="button" data-action="opp-goal" data-qi="${qi}" aria-label="Add opponent goal"><span class="pos">OPPONENT</span>+ Goal</button>` : ""}</div>
       ${formRow}
       <div class="pitch${q.positions.GK == null ? " no-keeper" : ""}">${rows}</div>${bench}</section>`;
   });
@@ -3311,7 +3312,7 @@ document.getElementById("main").addEventListener("click", async (e) => {
       break;
     case "opp-goal": {
       const qi = Number(b.dataset.qi);
-      if (!doubleTap("opp:" + qi, "Double-tap to add a " + oppName(g) + " goal")) break;
+      if (!doubleTap("opp:" + qi, "Double-tap to add an opponent goal")) break;
       g.oppGoals.push({ p: qi });
       commit();
       toast(oppName(g) + " goal · " + periodName(g.format, qi));

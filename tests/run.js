@@ -219,6 +219,10 @@ async function flowTests(browser, scheme) {
   await p.waitForTimeout(500);
   await p.dblclick('[data-qi="1"][data-slot="F:CF"]'); await p.waitForTimeout(500);
   await p.dblclick('[data-qi="2"][data-slot="B:0"]'); await p.waitForTimeout(500);
+  const oppBtn = await p.$eval('[data-action="opp-goal"][data-qi="1"]', (b) => ({ text: b.innerText.replace(/\s+/g, " ").trim(), h: b.getBoundingClientRect().height, w: b.getBoundingClientRect().width,
+    spot: document.querySelector(".pitch .spot").getBoundingClientRect() }));
+  check(/^OPPONENT \+ Goal$/i.test(oppBtn.text) && Math.abs(oppBtn.h - oppBtn.spot.height) < 1 && Math.abs(oppBtn.w - oppBtn.spot.width) < 20,
+    "opponent goal button says Opponent, same height and about the same width as a kid's spot", JSON.stringify({ ...oppBtn, spot: [oppBtn.spot.width, oppBtn.spot.height] }));
   await p.click('[data-action="opp-goal"][data-qi="1"]'); await p.waitForTimeout(600);
   check(!(await p.evaluate(() => team().games.find((g) => g.opponent === "Tigers").oppGoals.length)) && (await p.textContent("#toast")).includes("Double-tap"), "one tap doesn't add an opponent goal");
   await p.dblclick('[data-action="opp-goal"][data-qi="1"]'); await p.waitForTimeout(500);

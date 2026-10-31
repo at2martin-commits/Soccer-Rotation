@@ -27,7 +27,7 @@ how to move your teams over.)
   can switch formation during the game: the same kids stay on the field and on the bench,
   and only spots change. Press and hold a player, then drag them onto another spot in the
   same period to swap them. **More → Share lineup as text** sends it as text. Double-tap a player on the field
-  to record a goal, and double-tap **+ Opponent goal** on a period when the other team scores;
+  to record a goal, and double-tap **Opponent + Goal** on a period when the other team scores;
   the scoreboard keeps the running score. Remove a mistaken goal from the game's Goals list.
 - **Parent scorekeeper**: once a game has a lineup, **More → Parent scorekeeper code** puts up a QR code. A parent
   points their phone's camera at it and gets the lineup with jersey numbers; they tap a kid
